@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import type { Asset } from '../core/model'
 import { bytesToDataUrl, dataUrlToBytes, imageToAsset, trimmedCanvasAsset } from './files'
+import { Icon } from './icons'
 
 type Result = { asset: Asset; width: number; height: number }
 interface Props { onDone: (r: Result) => void; onClose: () => void }
 
 const KEY = 'pdfstudio.signatures'
+const INKS: [string, string][] = [['Navy', '#1d2b6b'], ['Black', '#1e1d1a'], ['Blue', '#1f5fbf']]
 const SCRIPT_FONTS = ['"Snell Roundhand", "Segoe Script", cursive', '"Brush Script MT", "Lucida Handwriting", cursive', '"Bradley Hand", "Comic Sans MS", cursive']
 
 function loadSaved(): string[] {
@@ -20,7 +22,7 @@ export function SignatureModal({ onDone, onClose }: Props) {
   const [saved, setSaved] = useState(loadSaved)
   const [typed, setTyped] = useState('')
   const [fontIdx, setFontIdx] = useState(0)
-  const [color, setColor] = useState('#1a2a6c')
+  const [color, setColor] = useState(INKS[0][1])
   const [error, setError] = useState<string | null>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const last = useRef<{ x: number; y: number } | null>(null)
@@ -99,52 +101,64 @@ export function SignatureModal({ onDone, onClose }: Props) {
       <div className="modal" role="dialog" aria-label="Signature">
         <header>
           <h2>Signature</h2>
-          <button className="icon" onClick={onClose} aria-label="Close">✕</button>
+          <button className="btn icon ghost" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
         </header>
-        <div className="seg">
-          {(['draw', 'type', 'upload'] as const).map((t) => (
-            <button key={t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); setError(null) }}>{t[0].toUpperCase() + t.slice(1)}</button>
-          ))}
-          <input type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="Ink color" />
+        <div className="row">
+          <div className="seg light" role="tablist" aria-label="Signature method" style={{ flex: 1 }}>
+            {(['draw', 'type', 'upload'] as const).map((t) => (
+              <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); setError(null) }}>{t[0].toUpperCase() + t.slice(1)}</button>
+            ))}
+          </div>
+          <div className="swatches" role="radiogroup" aria-label="Ink color">
+            {INKS.map(([name, hex]) => (
+              <button key={hex} role="radio" aria-checked={color === hex} aria-label={name} className={`swatch ${color === hex ? 'on' : ''}`} style={{ background: hex }} onClick={() => setColor(hex)} />
+            ))}
+          </div>
         </div>
 
         {tab === 'draw' && (
           <>
-            <canvas ref={canvas} width={900} height={300} className="sig-pad" onPointerDown={down} onPointerMove={move} onPointerUp={() => (last.current = null)} onPointerCancel={() => (last.current = null)} />
-            <div className="actions"><button onClick={clear}>Clear</button><button className="primary" onClick={pickDrawn}>Use signature</button></div>
+            <canvas ref={canvas} width={900} height={300} className="sig-pad" aria-label="Signature pad" onPointerDown={down} onPointerMove={move} onPointerUp={() => (last.current = null)} onPointerCancel={() => (last.current = null)} />
+            <div className="row" style={{ justifyContent: 'flex-end' }}>
+              <button className="btn" onClick={clear}>Clear</button>
+              <button className="btn primary" onClick={pickDrawn}><Icon name="check" />Use signature</button>
+            </div>
           </>
         )}
         {tab === 'type' && (
           <>
-            <input className="sig-typed" placeholder="Your name" value={typed} onChange={(e) => setTyped(e.target.value)} style={{ fontFamily: SCRIPT_FONTS[fontIdx], color }} />
-            <div className="seg">
+            <input className="sig-typed" aria-label="Your name" placeholder="Your name" value={typed} onChange={(e) => setTyped(e.target.value)} style={{ fontFamily: SCRIPT_FONTS[fontIdx], color }} />
+            <div className="font-choices" role="radiogroup" aria-label="Signature style">
               {SCRIPT_FONTS.map((f, i) => (
-                <button key={f} className={fontIdx === i ? 'on' : ''} style={{ fontFamily: f }} onClick={() => setFontIdx(i)}>{typed || 'Signature'}</button>
+                <button key={f} role="radio" aria-checked={fontIdx === i} className={fontIdx === i ? 'on' : ''} style={{ fontFamily: f }} onClick={() => setFontIdx(i)}>{typed || 'Signature'}</button>
               ))}
             </div>
-            <div className="actions"><button className="primary" onClick={pickTyped}>Use signature</button></div>
+            <div className="row" style={{ justifyContent: 'flex-end' }}>
+              <button className="btn primary" onClick={pickTyped}><Icon name="check" />Use signature</button>
+            </div>
           </>
         )}
         {tab === 'upload' && (
-          <label className="drop">
-            Choose an image of your signature (transparent PNG works best)
+          <label className="upload-zone">
+            <Icon name="upload" size={32} stroke={1.6} />
+            Choose an image of your signature — a transparent PNG works best.
             <input type="file" accept="image/*" onChange={(e) => pickUpload(e.target.files?.[0])} />
           </label>
         )}
         {error && <p className="err">{error}</p>}
 
         {saved.length > 0 && (
-          <>
-            <h3>Saved on this device</h3>
+          <div className="group divided">
+            <span className="eyebrow">Saved on this device</span>
             <div className="saved-sigs">
               {saved.map((url) => (
                 <div key={url} className="saved-sig">
                   <button onClick={() => pickSaved(url)} title="Use this signature"><img src={url} alt="Saved signature" /></button>
-                  <button className="icon" onClick={() => forget(url)} aria-label="Forget signature">✕</button>
+                  <button className="remove" onClick={() => forget(url)} aria-label="Forget signature"><Icon name="close" size={12} stroke={2.4} /></button>
                 </div>
               ))}
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

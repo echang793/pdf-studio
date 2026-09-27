@@ -18,10 +18,12 @@ interface Props {
   className?: string
   style?: CSSProperties
   children?: ReactNode
+  /** Label shown on the selected item (CSS reads it). */
+  'data-kind'?: string
 }
 
 /** A draggable, resizable rectangle with 8 handles. Works with mouse, pen and touch. */
-export function BoxEditor({ rect, bounds, onChange, onCommit, onSelect, selected = true, minSize = 8, lockAspect = false, className = '', style, children }: Props) {
+export function BoxEditor({ rect, bounds, onChange, onCommit, onSelect, selected = true, minSize = 8, lockAspect = false, className = '', style, children, 'data-kind': kind }: Props) {
   const drag = useRef<{ h: Handle; px: number; py: number; start: Box; last: Box } | null>(null)
 
   const down = (h: Handle) => (e: PointerEvent) => {
@@ -46,6 +48,7 @@ export function BoxEditor({ rect, bounds, onChange, onCommit, onSelect, selected
   return (
     <div
       className={`box-editor ${selected ? 'selected' : ''} ${className}`}
+      data-kind={kind}
       style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height, ...style }}
       onPointerDown={down('move')}
       onPointerMove={move}

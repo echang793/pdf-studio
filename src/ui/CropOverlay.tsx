@@ -1,11 +1,12 @@
 import { useRef, type PointerEvent } from 'react'
-import type { Box, Margins, Size } from '../core/geometry'
+import { fromPt, type Box, type Margins, type Size, type Unit } from '../core/geometry'
 import { BoxEditor } from './BoxEditor'
 
 interface Props {
   size: Size // display size in pt
   scale: number
   margins: Margins
+  unit: Unit
   onChange: (m: Margins) => void
 }
 
@@ -21,9 +22,11 @@ const toMargins = (s: Size, r: Box, k: number): Margins => ({
   right: s.width - (r.x + r.width) / k,
   bottom: s.height - (r.y + r.height) / k,
 })
+const DIMS_DIGITS: Record<Unit, number> = { mm: 1, in: 2, pt: 0 }
+const fmt = (pt: number, u: Unit) => fromPt(pt, u).toFixed(DIMS_DIGITS[u])
 
 /** Dimmed crop frame over the page. Drag the frame/handles, or drag on the dimmed area to draw a new one. */
-export function CropOverlay({ size, scale, margins, onChange }: Props) {
+export function CropOverlay({ size, scale, margins, unit, onChange }: Props) {
   const bounds = { width: size.width * scale, height: size.height * scale }
   const rect = toRect(size, margins, scale)
   const draw = useRef<{ x: number; y: number } | null>(null)
@@ -50,8 +53,9 @@ export function CropOverlay({ size, scale, margins, onChange }: Props) {
     <div ref={layer} className="crop-layer" style={bounds} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
       <div className="crop-clip"><div className="crop-hole" style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }} /></div>
       <BoxEditor rect={rect} bounds={bounds} onChange={(r) => onChange(toMargins(size, r, scale))} className="crop-box">
+        <span className="thirds" />
         <span className="crop-dims">
-          {Math.round(rect.width / scale)} × {Math.round(rect.height / scale)} pt
+          {fmt(rect.width / scale, unit)} × {fmt(rect.height / scale, unit)} {unit}
         </span>
       </BoxEditor>
     </div>

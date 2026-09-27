@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Scope } from '../core/scope'
+import { Icon } from './icons'
 import { ScopePicker } from './ScopePicker'
 
 interface Props {
@@ -22,45 +23,51 @@ export function PagesPanel(p: Props) {
   const dis = !!p.scopeError || p.busy
   return (
     <div className="panel">
-      <h2>Pages</h2>
-      <p className="hint">Drag thumbnails to reorder.</p>
+      <div className="panel-head">
+        <h2>Pages</h2>
+        <p className="hint">Drag thumbnails to reorder. Pick which pages the buttons below act on.</p>
+      </div>
+
       <ScopePicker scope={p.scope} onChange={p.onScope} error={p.scopeError} />
-      <div className="actions">
-        <button disabled={dis} onClick={() => p.onRotate(-90)} title="Rotate left">⟲ Rotate left</button>
-        <button disabled={dis} onClick={() => p.onRotate(90)} title="Rotate right">⟳ Rotate right</button>
-      </div>
-      <div className="actions">
-        <button disabled={dis} onClick={p.onDuplicate}>Duplicate</button>
-        <button disabled={dis} className="danger" onClick={p.onDelete}>Delete</button>
-      </div>
-      <div className="actions">
-        <button disabled={dis} onClick={p.onExtract} title="Download the chosen pages as a new PDF">Extract to new PDF</button>
+
+      <div className="group">
+        <div className="grid2">
+          <button className="btn" disabled={dis} onClick={() => p.onRotate(-90)}><Icon name="rotateL" size={16} />Rotate left</button>
+          <button className="btn" disabled={dis} onClick={() => p.onRotate(90)}><Icon name="rotateR" size={16} />Rotate right</button>
+          <button className="btn" disabled={dis} onClick={p.onDuplicate}><Icon name="copy" size={16} />Duplicate</button>
+          <button className="btn danger" disabled={dis} onClick={p.onDelete}><Icon name="trash" size={16} />Delete</button>
+        </div>
+        <button className="btn" disabled={dis} onClick={p.onExtract} title="Download the chosen pages as a new PDF"><Icon name="extract" size={16} />Extract to new PDF</button>
       </div>
 
-      <h3>Insert blank page</h3>
-      <div className="row">
-        <select value={blankSize} onChange={(e) => setBlankSize(e.target.value as typeof blankSize)} aria-label="Blank page size">
-          <option value="same">Same size as current</option>
-          <option value="letter">Letter (8.5×11 in)</option>
-          <option value="a4">A4</option>
-        </select>
-      </div>
-      <div className="actions">
-        <button disabled={p.busy} onClick={() => p.onBlank('before', blankSize)}>Before current</button>
-        <button disabled={p.busy} onClick={() => p.onBlank('after', blankSize)}>After current</button>
-      </div>
-
-      <h3>Merge &amp; split</h3>
-      <div className="actions">
-        <button disabled={p.busy} onClick={p.onAddPdf}>Add pages from another PDF…</button>
-      </div>
-      <div className="row">
-        <label>
-          Split every{' '}
-          <input type="number" min={1} value={every} onChange={(e) => setEvery(Math.max(1, Math.floor(Number(e.target.value) || 1)))} style={{ width: '4.5em' }} />{' '}
-          page(s)
+      <div className="group divided">
+        <span className="eyebrow">Insert blank page</span>
+        <label className="field" aria-label="Blank page size">
+          <select value={blankSize} onChange={(e) => setBlankSize(e.target.value as typeof blankSize)}>
+            <option value="same">Same size as current page</option>
+            <option value="letter">Letter · 8.5 × 11 in</option>
+            <option value="a4">A4 · 210 × 297 mm</option>
+          </select>
         </label>
-        <button disabled={p.busy} onClick={() => p.onSplit(every)}>Download .zip</button>
+        <div className="grid2">
+          <button className="btn" disabled={p.busy} onClick={() => p.onBlank('before', blankSize)}><Icon name="plus" size={16} />Before</button>
+          <button className="btn" disabled={p.busy} onClick={() => p.onBlank('after', blankSize)}><Icon name="plus" size={16} />After</button>
+        </div>
+      </div>
+
+      <div className="group divided">
+        <span className="eyebrow">Merge &amp; split</span>
+        <button className="btn" disabled={p.busy} onClick={p.onAddPdf}><Icon name="merge" size={16} />Add pages from another PDF</button>
+        <div className="row">
+          <label className="field-label" style={{ flex: 1 }}>
+            Split every
+            <span className="field">
+              <input type="number" min={1} value={every} onChange={(e) => setEvery(Math.max(1, Math.floor(Number(e.target.value) || 1)))} />
+              <span className="unit">pages</span>
+            </span>
+          </label>
+          <button className="btn" style={{ alignSelf: 'flex-end' }} disabled={p.busy} onClick={() => p.onSplit(every)}><Icon name="split" size={16} />Download .zip</button>
+        </div>
       </div>
     </div>
   )

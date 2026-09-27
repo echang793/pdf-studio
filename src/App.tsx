@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type DragEvent } from 'react'
-import { boxToMargins, displaySize, marginsToBox, rectFromDisplay, type Box, type Margins } from './core/geometry'
+import { boxToMargins, displaySize, marginsToBox, rectFromDisplay, type Box, type Margins, type Unit } from './core/geometry'
 import { uid, type Annot, type AnnotPatch, type Asset, type PageRef } from './core/model'
 import { buildPdf, loadSource, SourceError } from './core/pdf'
 import { resolveScope, type Scope } from './core/scope'
@@ -10,6 +10,7 @@ import { AnnotLayer } from './ui/AnnotLayer'
 import { CropOverlay } from './ui/CropOverlay'
 import { CropPanel } from './ui/CropPanel'
 import { EditPanel } from './ui/EditPanel'
+import { Icon, Logo } from './ui/icons'
 import { downloadBytes, imageToAsset, isImageFile, isPdfFile, readBytes } from './ui/files'
 import { PageCanvas } from './ui/PageCanvas'
 import { PagesPanel } from './ui/PagesPanel'
@@ -33,6 +34,8 @@ export default function App() {
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null)
   const [showSig, setShowSig] = useState(false)
   const [zoom, setZoom] = useState(1)
+  const [unit, setUnit] = useState<Unit>('mm')
+  const [dragOver, setDragOver] = useState(false)
   const [name, setName] = useState('document')
   const sources = useRef<Record<string, Uint8Array>>({})
   const [assets, setAssets] = useState<Record<string, Asset>>({})
@@ -216,68 +219,111 @@ export default function App() {
 
   const dirty = !!(draft && pageMargins && !sameMargins(draft, pageMargins))
 
+  const modeIcon = { crop: 'crop', pages: 'pages', edit: 'edit' } as const
+
   return (
-    <div className="app" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+    <div
+      className="app"
+      onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true) }}
+      onDragLeave={(e) => { if (!e.relatedTarget) setDragOver(false) }}
+      onDrop={(e) => { setDragOver(false); onDrop(e) }}
+    >
       <header className="topbar">
-        <strong className="brand">PDF Studio</strong>
-        <button onClick={() => openInput.current?.click()} disabled={busy}>Open PDF</button>
-        <div className="seg modes" role="tablist">
-          {(['crop', 'pages', 'edit'] as const).map((m) => (
-            <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'on' : ''} disabled={!page} onClick={() => setMode(m)}>
-              {m[0].toUpperCase() + m.slice(1)}
+        <div className="brand">
+          <Logo />
+          <span className="wordmark">PDF <em>Studio</em></span>
+          {page && (
+            <button className="file-chip" onClick={() => openInput.current?.click()} disabled={busy} title="Open a different PDF">
+              {name}.pdf · {pages.length} page{pages.length === 1 ? '' : 's'}
             </button>
-          ))}
+          )}
         </div>
-        <span className="spacer" />
-        <button onClick={() => dispatch({ type: 'undo' })} disabled={!state.past.length} title="Undo (⌘Z)">↶</button>
-        <button onClick={() => dispatch({ type: 'redo' })} disabled={!state.future.length} title="Redo (⇧⌘Z)">↷</button>
-        <button className="primary" onClick={download} disabled={!pages.length || busy} title="Download (⌘S)">Download</button>
+        {page ? (
+          <div className="seg modes" role="tablist" aria-label="Mode">
+            {(['crop', 'pages', 'edit'] as const).map((m) => (
+              <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
+                <Icon name={modeIcon[m]} size={16} />
+                {m[0].toUpperCase() + m.slice(1)}
+              </button>
+            ))}
+          </div>
+        ) : <span className="modes-spacer" />}
+        <div className="top-actions">
+          {page ? (
+            <>
+              <button className="btn icon" onClick={() => dispatch({ type: 'undo' })} disabled={!state.past.length} title="Undo (⌘Z)" aria-label="Undo"><Icon name="undo" /></button>
+              <button className="btn icon" onClick={() => dispatch({ type: 'redo' })} disabled={!state.future.length} title="Redo (⇧⌘Z)" aria-label="Redo"><Icon name="redo" /></button>
+              <button className="btn primary" onClick={download} disabled={busy} title="Download (⌘S)" aria-label="Download">
+                <Icon name="download" stroke={2.2} /><span className="btn-label">Download</span>
+              </button>
+            </>
+          ) : (
+            <span className="privacy"><Icon name="lock" size={16} /><span className="privacy-text">Runs in your browser · nothing uploaded</span></span>
+          )}
+        </div>
         <input ref={openInput} type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => { addFiles([...(e.target.files ?? [])], true); e.target.value = '' }} />
         <input ref={addInput} type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => { addFiles([...(e.target.files ?? [])], false); e.target.value = '' }} />
         <input ref={imgInput} type="file" accept="image/*" hidden onChange={(e) => { addImageFile(e.target.files?.[0]); e.target.value = '' }} />
       </header>
 
       {!page ? (
-        <main className="empty" onClick={() => openInput.current?.click()}>
-          <div>
-            <h1>Drop a PDF here</h1>
-            <p>or click to choose one. Crop, trim, reorder, rotate, merge, split, add text, images and signatures.</p>
-            <p className="hint">Everything happens in your browser. Files are never uploaded.</p>
+        <main className="empty mat">
+          <div className="hero">
+            <h1>Crop, trim <em>&amp;</em> sign your PDFs.</h1>
+            <p>Everything the paid sites do. Free, private, offline.</p>
+          </div>
+          <button className={`dropzone ${dragOver ? 'over' : ''}`} onClick={() => openInput.current?.click()} disabled={busy}>
+            <span className="corner c-nw" /><span className="corner c-ne" /><span className="corner c-sw" /><span className="corner c-se" />
+            <Icon name="upload" size={44} stroke={1.6} />
+            <strong>{busy ? 'Opening…' : 'Drop a PDF here'}</strong>
+            <span className="btn primary big">Choose file</span>
+          </button>
+          <div className="features">
+            <div className="feature"><Icon name="crop" size={22} stroke={1.9} /><strong>Crop &amp; trim</strong><span>Visual frame, exact margins, auto-trim white space.</span></div>
+            <div className="feature"><Icon name="pages" size={22} stroke={1.9} /><strong>Organize pages</strong><span>Reorder, rotate, merge, split and extract.</span></div>
+            <div className="feature"><Icon name="edit" size={22} stroke={1.9} /><strong>Edit &amp; sign</strong><span>Text, white-out, highlights, images, signatures.</span></div>
           </div>
         </main>
       ) : (
         <div className="workspace">
-          <aside className="rail">
+          <aside className="rail" aria-label="Pages">
+            <span className="eyebrow">Pages</span>
             <ThumbRail pages={pages} current={state.current} onSelect={(id) => dispatch({ type: 'select', id })} onMove={(from, to) => dispatch({ type: 'move', from, to })} />
           </aside>
-          <main className="stage" ref={stage}>
-            <div className="page-wrap" style={{ width: size.width * scale, height: size.height * scale }}>
-              <PageCanvas page={page} scale={scale} />
-              {mode === 'crop' && margins && <CropOverlay size={size} scale={scale} margins={margins} onChange={setDraft} />}
-              {mode !== 'crop' && <div className="shade-clip"><div className="crop-shade" style={cropShadeStyle(page, scale)} /></div>}
-              {mode === 'edit' && (
-                <AnnotLayer
-                  page={page} scale={scale} tool={tool} selected={selectedAnnot} assetUrls={assetUrls}
-                  onSelect={setSelectedAnnot} onCreate={createAt}
-                  onMove={(id, rect) => dispatch({ type: 'updateAnnot', pageId: page.id, id, patch: { rect } })}
-                  onEditText={(id) => { setSelectedAnnot(id); setTimeout(() => textRef.current?.focus(), 0) }}
-                />
-              )}
-              {mode !== 'edit' && page.annots.length > 0 && (
-                <AnnotLayer page={page} scale={scale} tool="select" selected={null} assetUrls={assetUrls} onSelect={() => {}} onCreate={() => {}} onMove={() => {}} onEditText={() => {}} />
-              )}
-            </div>
+          <div className="stage-wrap mat">
+            <span className="ruler corner" />
+            <span className="ruler h" />
+            <span className="ruler v" />
+            <main className="stage" ref={stage}>
+              <div className="page-wrap" style={{ width: size.width * scale, height: size.height * scale }}>
+                <PageCanvas page={page} scale={scale} />
+                {mode === 'crop' && margins && <CropOverlay size={size} scale={scale} margins={margins} unit={unit} onChange={setDraft} />}
+                {mode !== 'crop' && <div className="shade-clip"><div className="crop-shade" style={cropShadeStyle(page, scale)} /></div>}
+                {mode === 'edit' && (
+                  <AnnotLayer
+                    page={page} scale={scale} tool={tool} selected={selectedAnnot} assetUrls={assetUrls}
+                    onSelect={setSelectedAnnot} onCreate={createAt}
+                    onMove={(id, rect) => dispatch({ type: 'updateAnnot', pageId: page.id, id, patch: { rect } })}
+                    onEditText={(id) => { setSelectedAnnot(id); setTimeout(() => textRef.current?.focus(), 0) }}
+                  />
+                )}
+                {mode !== 'edit' && page.annots.length > 0 && (
+                  <AnnotLayer page={page} scale={scale} tool="select" selected={null} assetUrls={assetUrls} onSelect={() => {}} onCreate={() => {}} onMove={() => {}} onEditText={() => {}} />
+                )}
+              </div>
+            </main>
             <div className="zoom">
               <button onClick={() => setZoom((z) => Math.max(0.25, z / 1.25))} aria-label="Zoom out">−</button>
-              <button onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+              <button className="pct" onClick={() => setZoom(1)} title="Fit page">{Math.round(zoom * 100)}%</button>
               <button onClick={() => setZoom((z) => Math.min(6, z * 1.25))} aria-label="Zoom in">+</button>
-              <span className="pageno">{index + 1} / {pages.length}</span>
+              <span className="divider" />
+              <span className="pageno">{String(index + 1).padStart(2, '0')} / {String(pages.length).padStart(2, '0')}</span>
             </div>
-          </main>
+          </div>
           <aside className="side">
             {mode === 'crop' && margins && (
               <CropPanel
-                margins={margins} onMargins={setDraft} scope={scope} onScope={setScope} scopeError={resolved.error}
+                margins={margins} onMargins={setDraft} unit={unit} onUnit={setUnit} scopeCount={resolved.ids.length} scope={scope} onScope={setScope} scopeError={resolved.error}
                 dirty={dirty} busy={busy} onApply={applyCrop} onAutoTrim={autoTrim} onRevertDraft={() => setDraft(null)}
                 onReset={() => { if (!resolved.error) { dispatch({ type: 'resetCrop', ids: resolved.ids }); setDraft(null) } }}
               />
@@ -306,7 +352,7 @@ export default function App() {
       )}
 
       {showSig && <SignatureModal onClose={() => setShowSig(false)} onDone={(r) => { setShowSig(false); placeImage(r.asset, r.width / 4, r.height / 4) }} />}
-      {toast && <div className={`toast ${toast.error ? 'error' : ''}`} role="status">{toast.text}</div>}
+      {toast && <div className={`toast ${toast.error ? 'error' : ''}`} role="status">{!toast.error && <Icon name="check" size={16} stroke={2.4} />}{toast.text}</div>}
     </div>
   )
 }
