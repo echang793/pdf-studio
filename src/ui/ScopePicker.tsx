@@ -8,13 +8,22 @@ const MODES: [ScopeMode, string, string][] = [
   ['custom', 'Range', 'A custom page range'],
 ]
 
-export function ScopePicker({ scope, onChange, error, label = 'Apply to' }: { scope: Scope; onChange: (s: Scope) => void; error?: string; label?: string }) {
+export function ScopePicker({
+  scope, onChange, error, label = 'Apply to', selectedCount = 0,
+}: { scope: Scope; onChange: (s: Scope) => void; error?: string; label?: string; selectedCount?: number }) {
+  const picking = selectedCount > 1 && scope.mode === 'selected'
   return (
     <div className="group scope">
       <span className="eyebrow" id="scope-label">{label}</span>
+      {picking && (
+        <div className="picked-chip">
+          <span>{selectedCount} page{selectedCount === 1 ? '' : 's'} picked on the left</span>
+          <button type="button" className="btn ghost" onClick={() => onChange({ ...scope, mode: 'current' })}>Clear</button>
+        </div>
+      )}
       <div className="seg" role="radiogroup" aria-labelledby="scope-label">
         {MODES.map(([m, text, title]) => (
-          <button key={m} type="button" role="radio" aria-checked={scope.mode === m} title={title} className={scope.mode === m ? 'on' : ''} onClick={() => onChange({ ...scope, mode: m })}>
+          <button key={m} type="button" role="radio" aria-checked={!picking && scope.mode === m} title={title} className={!picking && scope.mode === m ? 'on' : ''} onClick={() => onChange({ ...scope, mode: m })}>
             {text}
           </button>
         ))}

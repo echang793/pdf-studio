@@ -171,9 +171,12 @@ input[type='color'] { width: 36px; height: 36px; padding: 2px; border: 1px solid
 .thumb { cursor: grab; display: flex; flex-direction: column; align-items: center; gap: 6px; touch-action: none; outline: none; }
 .thumb-window { position: relative; overflow: hidden; background: #fff; border-radius: 4px; box-shadow: 0 0 0 1px var(--line), 0 3px 8px rgba(30, 29, 26, 0.1); }
 .thumb.active .thumb-window { box-shadow: 0 0 0 3px var(--accent), 0 4px 12px rgba(30, 29, 26, 0.16); }
+.thumb.picked .thumb-window { box-shadow: 0 0 0 3px var(--ink), 0 4px 12px rgba(30, 29, 26, 0.16); }
+.thumb.active.picked .thumb-window { box-shadow: 0 0 0 3px var(--accent), 0 0 0 5px var(--ink), 0 4px 12px rgba(30, 29, 26, 0.16); }
 .thumb:focus-visible .thumb-window { box-shadow: 0 0 0 3px var(--accent), 0 0 0 6px var(--accent-ring); }
 .thumb-frame { position: relative; }
 .thumb-badges { position: absolute; right: -8px; top: -8px; display: flex; gap: 3px; z-index: 1; }
+.pick-badge { position: absolute; left: -8px; top: -8px; z-index: 1; width: 22px; height: 22px; border-radius: 999px; background: var(--ink); color: var(--paper-hi); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--paper-hi); }
 .badge { width: 22px; height: 22px; border-radius: 999px; background: var(--ink); color: var(--paper-hi); display: flex; align-items: center; justify-content: center; }
 .thumb-label { font-family: var(--mono); font-size: 12px; color: var(--muted); }
 .thumb.active .thumb-label { color: var(--ink); font-weight: 500; }
@@ -193,6 +196,8 @@ input[type='color'] { width: 36px; height: 36px; padding: 2px; border: 1px solid
 .note strong { color: var(--ink); }
 .divided { padding-top: 20px; border-top: 1px solid var(--line); }
 .scope .seg { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.picked-chip { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 10px; background: var(--accent-ring); font-size: 13px; color: var(--ink); }
+.picked-chip .btn { height: 30px; padding: 0 10px; font-size: 13px; }
 .scope .seg > button { padding: 0 4px; }
 
 .tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

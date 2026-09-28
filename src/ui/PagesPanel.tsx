@@ -7,6 +7,7 @@ interface Props {
   scope: Scope
   onScope: (s: Scope) => void
   scopeError?: string
+  selectedCount?: number
   busy: boolean
   onRotate: (delta: number) => void
   onDelete: () => void
@@ -28,7 +29,7 @@ export function PagesPanel(p: Props) {
         <p className="hint">Drag thumbnails to reorder. Pick which pages the buttons below act on.</p>
       </div>
 
-      <ScopePicker scope={p.scope} onChange={p.onScope} error={p.scopeError} />
+      <ScopePicker scope={p.scope} onChange={p.onScope} error={p.scopeError} selectedCount={p.selectedCount} />
 
       <div className="group">
         <div className="grid2">

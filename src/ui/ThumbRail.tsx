@@ -8,7 +8,9 @@ import { PageCanvas } from './PageCanvas'
 
 const THUMB_W = 104
 
-function Thumb({ page, index, active, onSelect }: { page: PageRef; index: number; active: boolean; onSelect: () => void }) {
+export interface ClickMods { shiftKey: boolean; toggle: boolean }
+
+function Thumb({ page, index, active, picked, onSelect }: { page: PageRef; index: number; active: boolean; picked: boolean; onSelect: (mods: ClickMods) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id })
   const full = displaySize(page.media, page.rotation)
   const crop = rectToDisplay(page.media, page.rotation, page.crop)
@@ -20,10 +22,10 @@ function Thumb({ page, index, active, onSelect }: { page: PageRef; index: number
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
-      className={`thumb ${active ? 'active' : ''}`}
-      aria-label={`Page ${index + 1}${cropped ? ', cropped' : ''}`}
+      className={`thumb ${active ? 'active' : ''} ${picked ? 'picked' : ''}`}
+      aria-label={`Page ${index + 1}${cropped ? ', cropped' : ''}${picked ? ', selected' : ''}`}
       aria-current={active ? 'page' : undefined}
-      onClick={onSelect}
+      onClick={(e) => onSelect({ shiftKey: e.shiftKey, toggle: e.metaKey || e.ctrlKey })}
       {...attributes}
       {...listeners}
     >
@@ -33,6 +35,7 @@ function Thumb({ page, index, active, onSelect }: { page: PageRef; index: number
             <PageCanvas page={page} scale={scale} />
           </div>
         </div>
+        {picked && <span className="pick-badge"><Icon name="check" size={12} stroke={2.8} label="Selected" /></span>}
         {(cropped || page.annots.length > 0) && (
           <span className="thumb-badges">
             {cropped && <span className="badge" title="Cropped"><Icon name="crop" size={12} stroke={2.6} label="Cropped" /></span>}
@@ -45,7 +48,16 @@ function Thumb({ page, index, active, onSelect }: { page: PageRef; index: number
   )
 }
 
-export function ThumbRail({ pages, current, onSelect, onMove }: { pages: PageRef[]; current: string | null; onSelect: (id: string) => void; onMove: (from: number, to: number) => void }) {
+export function ThumbRail({
+  pages, current, picked, onSelect, onMove,
+}: {
+  pages: PageRef[]
+  current: string | null
+  /** Ids of pages in the active multi-selection (may include `current`). */
+  picked: ReadonlySet<string>
+  onSelect: (id: string, mods: ClickMods) => void
+  onMove: (from: number, to: number) => void
+}) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -59,9 +71,9 @@ export function ThumbRail({ pages, current, onSelect, onMove }: { pages: PageRef
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={end}>
       <SortableContext items={pages.map((p) => p.id)} strategy={rectSortingStrategy}>
-        <ol className="thumbs" aria-label="Pages (drag to reorder)">
+        <ol className="thumbs" aria-label="Pages (drag to reorder, shift- or cmd-click to select several)">
           {pages.map((p, i) => (
-            <Thumb key={p.id} page={p} index={i} active={p.id === current} onSelect={() => onSelect(p.id)} />
+            <Thumb key={p.id} page={p} index={i} active={p.id === current} picked={picked.has(p.id)} onSelect={(mods) => onSelect(p.id, mods)} />
           ))}
         </ol>
       </SortableContext>

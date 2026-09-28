@@ -15,4 +15,13 @@ describe('resolveScope', () => {
     expect(resolveScope({ mode: 'custom', range: '9' }, pages, 'a').error).toMatch(/out of range/i)
     expect(resolveScope({ mode: 'current', range: '' }, pages, null).error).toMatch(/no page/i)
   })
+
+  it('resolves a multi-selection in document order, ignoring stray ids', () => {
+    const picked = new Set(['d', 'a', 'z'])
+    expect(resolveScope({ mode: 'selected', range: '' }, pages, 'a', picked)).toEqual({ ids: ['a', 'd'] })
+  })
+  it('errors on an empty or missing selection', () => {
+    expect(resolveScope({ mode: 'selected', range: '' }, pages, 'a').error).toMatch(/no pages selected/i)
+    expect(resolveScope({ mode: 'selected', range: '' }, pages, 'a', new Set()).error).toMatch(/no pages selected/i)
+  })
 })

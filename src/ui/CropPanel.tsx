@@ -13,6 +13,7 @@ interface Props {
   onScope: (s: Scope) => void
   scopeError?: string
   scopeCount: number
+  selectedCount?: number
   dirty: boolean
   busy: boolean
   onApply: () => void
@@ -70,7 +71,7 @@ export function CropPanel(p: Props) {
         <label className="check"><input type="checkbox" checked={uniform} onChange={(e) => setUniform(e.target.checked)} />Same on all sides</label>
       </div>
 
-      <ScopePicker scope={p.scope} onChange={p.onScope} error={p.scopeError} />
+      <ScopePicker scope={p.scope} onChange={p.onScope} error={p.scopeError} selectedCount={p.selectedCount} />
 
       <div className="group">
         <button className="btn primary big" disabled={blocked} onClick={p.onApply}>

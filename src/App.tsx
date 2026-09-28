@@ -27,7 +27,9 @@ export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState)
   const [mode, setMode] = useState<Mode>('crop')
   const [tool, setTool] = useState<Tool>('select')
-  const [scope, setScope] = useState<Scope>({ mode: 'current', range: '' })
+  const [scope, setScopeRaw] = useState<Scope>({ mode: 'current', range: '' })
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const anchor = useRef<string | null>(null)
   const [draftState, setDraftState] = useState<{ key: string; m: Margins } | null>(null)
   const [selectedAnnot, setSelectedAnnot] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -56,7 +58,34 @@ export default function App() {
   const draft = draftState?.key === draftKey ? draftState.m : null
   const setDraft = useCallback((m: Margins | null) => setDraftState(m ? { key: draftKey, m } : null), [draftKey])
   const margins = draft ?? pageMargins
-  const resolved = resolveScope(scope, pages, state.current)
+  const resolved = resolveScope(scope, pages, state.current, picked)
+  const setScope = useCallback((s: Scope) => { if (s.mode !== 'selected') setPicked(new Set()); setScopeRaw(s) }, [])
+  const clearPicked = useCallback(() => { setPicked(new Set()); setScopeRaw((s) => (s.mode === 'selected' ? { ...s, mode: 'current' } : s)) }, [])
+  const onThumbSelect = useCallback((id: string, mods: { shiftKey: boolean; toggle: boolean }) => {
+    dispatch({ type: 'select', id })
+    if (mods.shiftKey && anchor.current) {
+      const ids = pages.map((p) => p.id)
+      const a = ids.indexOf(anchor.current)
+      const b = ids.indexOf(id)
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a]
+        setPicked(new Set(ids.slice(lo, hi + 1)))
+        setScopeRaw((s) => ({ ...s, mode: 'selected' }))
+        return
+      }
+    }
+    if (mods.toggle) {
+      const next = new Set(picked)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      setPicked(next)
+      setScopeRaw((s) => ({ ...s, mode: next.size ? 'selected' : 'current' }))
+      anchor.current = id
+      return
+    }
+    anchor.current = id
+    clearPicked()
+  }, [pages, picked, clearPicked])
   const annot = page?.annots.find((a) => a.id === selectedAnnot) ?? null
 
   const notify = useCallback((text: string, error = false) => {
@@ -93,6 +122,8 @@ export default function App() {
         for (const id of Object.keys(sources.current)) if (!keep.has(id)) delete sources.current[id]
         for (const [id, b] of Object.entries(sources.current)) openForRender(id, b)
         setAssets({})
+        setPicked(new Set())
+        anchor.current = null
         dispatch({ type: 'reset' })
         setName(pdfs[0].name.replace(/\.pdf$/i, ''))
       }
@@ -202,7 +233,7 @@ export default function App() {
       else if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); if (pages.length) download() }
       else if (typing) return
       else if ((e.key === 'Delete' || e.key === 'Backspace') && annot) { e.preventDefault(); deleteAnnot() }
-      else if (e.key === 'Escape') { setSelectedAnnot(null); setTool('select') }
+      else if (e.key === 'Escape') { setSelectedAnnot(null); setTool('select'); clearPicked() }
       else if ((e.key === 'PageDown' || e.key === 'j') && pages[index + 1]) dispatch({ type: 'select', id: pages[index + 1].id })
       else if ((e.key === 'PageUp' || e.key === 'k') && pages[index - 1]) dispatch({ type: 'select', id: pages[index - 1].id })
     }
@@ -288,7 +319,7 @@ export default function App() {
         <div className="workspace">
           <aside className="rail" aria-label="Pages">
             <span className="eyebrow">Pages</span>
-            <ThumbRail pages={pages} current={state.current} onSelect={(id) => dispatch({ type: 'select', id })} onMove={(from, to) => dispatch({ type: 'move', from, to })} />
+            <ThumbRail pages={pages} current={state.current} picked={picked} onSelect={onThumbSelect} onMove={(from, to) => dispatch({ type: 'move', from, to })} />
           </aside>
           <div className="stage-wrap mat">
             <span className="ruler corner" />
@@ -323,14 +354,14 @@ export default function App() {
           <aside className="side">
             {mode === 'crop' && margins && (
               <CropPanel
-                margins={margins} onMargins={setDraft} unit={unit} onUnit={setUnit} scopeCount={resolved.ids.length} scope={scope} onScope={setScope} scopeError={resolved.error}
+                margins={margins} onMargins={setDraft} unit={unit} onUnit={setUnit} scopeCount={resolved.ids.length} scope={scope} onScope={setScope} scopeError={resolved.error} selectedCount={picked.size}
                 dirty={dirty} busy={busy} onApply={applyCrop} onAutoTrim={autoTrim} onRevertDraft={() => setDraft(null)}
                 onReset={() => { if (!resolved.error) { dispatch({ type: 'resetCrop', ids: resolved.ids }); setDraft(null) } }}
               />
             )}
             {mode === 'pages' && (
               <PagesPanel
-                scope={scope} onScope={setScope} scopeError={resolved.error} busy={busy}
+                scope={scope} onScope={setScope} scopeError={resolved.error} selectedCount={picked.size} busy={busy}
                 onRotate={(delta) => !resolved.error && dispatch({ type: 'rotate', ids: resolved.ids, delta })}
                 onDelete={() => {
                   if (resolved.error) return
