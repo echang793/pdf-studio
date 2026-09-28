@@ -3,7 +3,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import type { PDFDocumentLoadingTask, PDFPageProxy } from 'pdfjs-dist'
 import type { PageViewport } from 'pdfjs-dist/types/src/display/page_viewport'
 import { contentBounds } from '../core/autotrim'
-import { displaySize, type Margins } from '../core/geometry'
+import { displaySize, rectToDisplay, type Margins } from '../core/geometry'
 import type { PageRef } from '../core/model'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
@@ -74,6 +74,26 @@ export function renderPage(ref: PageRef, canvas: HTMLCanvasElement, scale: numbe
     canvas.getContext('2d')!.drawImage(off, 0, 0)
   })()
   return { promise, cancel: () => { cancelled = true; task?.cancel() } }
+}
+
+/** Render a page's *cropped* area (what Download would show) to an encoded image, at `scale` px/pt. */
+export async function renderPageToImage(ref: PageRef, scale: number, mime: 'image/png' | 'image/jpeg', quality?: number): Promise<Uint8Array> {
+  const size = displaySize(ref.media, ref.rotation)
+  const full = document.createElement('canvas')
+  await renderPage(ref, full, scale).promise
+  const dpr = full.width / size.width
+  const crop = rectToDisplay(ref.media, ref.rotation, ref.crop)
+  const sx = crop.x * dpr, sy = crop.y * dpr, sw = crop.width * dpr, sh = crop.height * dpr
+  const out = document.createElement('canvas')
+  out.width = Math.max(1, Math.round(sw))
+  out.height = Math.max(1, Math.round(sh))
+  out.getContext('2d')!.drawImage(full, sx, sy, sw, sh, 0, 0, out.width, out.height)
+  return new Promise((resolve, reject) => {
+    out.toBlob((blob) => {
+      if (!blob) return reject(new Error('Could not encode image'))
+      blob.arrayBuffer().then((buf) => resolve(new Uint8Array(buf)), reject)
+    }, mime, quality)
+  })
 }
 
 /** Detect content bounds and return display margins (pt) that trim surrounding whitespace, or null if blank. */

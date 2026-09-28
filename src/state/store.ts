@@ -1,5 +1,5 @@
 import { clampToMedia, marginsToBox, normRotation, type Margins, type Size } from '../core/geometry'
-import { uid, type Annot, type AnnotPatch, type PageRef, type WatermarkAnnot } from '../core/model'
+import { uid, type Annot, type AnnotPatch, type ImageAnnot, type PageRef, type WatermarkAnnot } from '../core/model'
 
 type WatermarkSpec = Omit<WatermarkAnnot, 'id' | 'rect' | 'rotate'>
 
@@ -23,6 +23,7 @@ export type Action =
   | { type: 'delete'; ids: string[] }
   | { type: 'duplicate'; ids: string[] }
   | { type: 'insertBlank'; index: number; size: Size }
+  | { type: 'addImagePage'; index: number; size: Size; annot: Omit<ImageAnnot, 'id' | 'rect' | 'rotate'> }
   | { type: 'setWatermark'; ids: string[]; spec: WatermarkSpec | null }
   | { type: 'addAnnot'; pageId: string; annot: Annot }
   | { type: 'updateAnnot'; pageId: string; id: string; patch: AnnotPatch }
@@ -85,6 +86,13 @@ function docReducer(doc: Doc, a: Action): Doc {
         const wm: WatermarkAnnot = { ...a.spec, id: uid('wm'), rect: p.crop, rotate: p.rotation }
         return { ...p, annots: [...rest, wm] }
       })
+    case 'addImagePage': {
+      const box = { x: 0, y: 0, width: a.size.width, height: a.size.height }
+      const page: PageRef = { id: uid('pg'), src: null, srcIndex: 0, rotation: 0, media: box, crop: { ...box }, annots: [{ ...a.annot, id: uid('an'), rect: { ...box }, rotate: 0 }] }
+      const pages = [...doc.pages]
+      pages.splice(Math.max(0, Math.min(a.index, pages.length)), 0, page)
+      return { pages }
+    }
     case 'addAnnot':
       return mapPages(doc, [a.pageId], (p) => ({ ...p, annots: [...p.annots, a.annot] }))
     case 'updateAnnot':

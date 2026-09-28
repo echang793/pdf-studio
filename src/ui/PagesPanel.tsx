@@ -7,6 +7,7 @@ interface Props {
   scope: Scope
   onScope: (s: Scope) => void
   scopeError?: string
+  scopeCount: number
   selectedCount?: number
   busy: boolean
   onRotate: (delta: number) => void
@@ -16,11 +17,16 @@ interface Props {
   onExtract: () => void
   onSplit: (every: number) => void
   onAddPdf: () => void
+  onAddImages: () => void
+  onExportImages: (dpi: number, format: 'png' | 'jpeg', quality: number) => void
 }
 
 export function PagesPanel(p: Props) {
   const [every, setEvery] = useState(1)
   const [blankSize, setBlankSize] = useState<'letter' | 'a4' | 'same'>('same')
+  const [format, setFormat] = useState<'png' | 'jpeg'>('png')
+  const [dpi, setDpi] = useState(150)
+  const [quality, setQuality] = useState(0.85)
   const dis = !!p.scopeError || p.busy
   return (
     <div className="panel">
@@ -58,7 +64,10 @@ export function PagesPanel(p: Props) {
 
       <div className="group divided">
         <span className="eyebrow">Merge &amp; split</span>
-        <button className="btn" disabled={p.busy} onClick={p.onAddPdf}><Icon name="merge" size={16} />Add pages from another PDF</button>
+        <div className="grid2">
+          <button className="btn" disabled={p.busy} onClick={p.onAddPdf}><Icon name="merge" size={16} />Add another PDF</button>
+          <button className="btn" disabled={p.busy} onClick={p.onAddImages}><Icon name="image" size={16} />Add image(s) as pages</button>
+        </div>
         <div className="row">
           <label className="field-label" style={{ flex: 1 }}>
             Split every
@@ -69,6 +78,40 @@ export function PagesPanel(p: Props) {
           </label>
           <button className="btn" style={{ alignSelf: 'flex-end' }} disabled={p.busy} onClick={() => p.onSplit(every)}><Icon name="split" size={16} />Download .zip</button>
         </div>
+      </div>
+
+      <div className="group divided">
+        <span className="eyebrow">Export pages as images</span>
+        <div className="row">
+          <label className="field-label" style={{ flex: 1 }}>
+            Format
+            <span className="field">
+              <select value={format} onChange={(e) => setFormat(e.target.value as typeof format)}>
+                <option value="png">PNG</option>
+                <option value="jpeg">JPEG</option>
+              </select>
+            </span>
+          </label>
+          <label className="field-label" style={{ flex: 1 }}>
+            Resolution
+            <span className="field">
+              <select value={dpi} onChange={(e) => setDpi(Number(e.target.value))}>
+                <option value={72}>72 dpi · screen</option>
+                <option value={150}>150 dpi</option>
+                <option value={300}>300 dpi · print</option>
+              </select>
+            </span>
+          </label>
+        </div>
+        {format === 'jpeg' && (
+          <label className="field-label">
+            Quality · {Math.round(quality * 100)}%
+            <input type="range" min={0.3} max={1} step={0.05} value={quality} onChange={(e) => setQuality(Number(e.target.value))} style={{ accentColor: 'var(--accent)' }} />
+          </label>
+        )}
+        <button className="btn" disabled={dis} onClick={() => p.onExportImages(dpi, format, quality)}>
+          <Icon name="extract" size={16} />Export {p.scopeCount} page{p.scopeCount === 1 ? '' : 's'}
+        </button>
       </div>
     </div>
   )

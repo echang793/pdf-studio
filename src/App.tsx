@@ -4,7 +4,7 @@ import { uid, type Annot, type AnnotPatch, type Asset, type PageRef } from './co
 import { buildPdf, loadSource, SourceError } from './core/pdf'
 import { resolveScope, type Scope } from './core/scope'
 import { chunk, zipFiles } from './core/split'
-import { autoTrimMargins, closeAll, openForRender } from './render/pdfjs'
+import { autoTrimMargins, closeAll, openForRender, renderPageToImage } from './render/pdfjs'
 import { initialState, reducer } from './state/store'
 import { AnnotLayer } from './ui/AnnotLayer'
 import { CropOverlay } from './ui/CropOverlay'
@@ -46,6 +46,7 @@ export default function App() {
   const openInput = useRef<HTMLInputElement>(null)
   const addInput = useRef<HTMLInputElement>(null)
   const imgInput = useRef<HTMLInputElement>(null)
+  const imgPagesInput = useRef<HTMLInputElement>(null)
   const textRef = useRef<HTMLTextAreaElement>(null)
   const stage = useRef<HTMLDivElement>(null)
 
@@ -198,6 +199,36 @@ export default function App() {
     downloadBytes(zipFiles(files), `${name}-split.zip`, 'application/zip')
     notify(`Split into ${groups.length} files`)
   })
+  const exportImages = (dpi: number, format: 'png' | 'jpeg', quality: number) => run(async () => {
+    if (resolved.error) return
+    const mime = format === 'png' ? 'image/png' : 'image/jpeg'
+    const ext = format === 'png' ? 'png' : 'jpg'
+    const targets = resolved.ids.map((id) => pages.find((p) => p.id === id)!)
+    const files = []
+    for (const [i, p] of targets.entries()) {
+      const bytes = await renderPageToImage(p, dpi / 72, mime, format === 'jpeg' ? quality : undefined)
+      files.push({ name: `${name}-p${String(i + 1).padStart(3, '0')}.${ext}`, bytes })
+    }
+    if (files.length === 1) downloadBytes(files[0].bytes, files[0].name, mime)
+    else downloadBytes(zipFiles(files), `${name}-images.zip`, 'application/zip')
+    notify(`Exported ${files.length} image${files.length === 1 ? '' : 's'}`)
+  })
+  const addImagePages = (files: File[]) => run(async () => {
+    const PX_TO_PT = 72 / 96 // treat images as 96 DPI unless the file says otherwise
+    let at = index + 1 // insert after the current page, each new one after the last
+    for (const f of files) {
+      const { asset, width, height } = await imageToAsset(f)
+      const key = uid('img')
+      setAssets((a) => ({ ...a, [key]: asset }))
+      dispatch({
+        type: 'addImagePage',
+        index: at++,
+        size: { width: width * PX_TO_PT, height: height * PX_TO_PT },
+        annot: { kind: 'image', asset: key },
+      })
+    }
+    notify(`Added ${files.length} image page${files.length === 1 ? '' : 's'}`)
+  })
 
   // ---- edit
   const addAnnot = (a: Annot) => {
@@ -309,6 +340,7 @@ export default function App() {
         <input ref={openInput} type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => { addFiles([...(e.target.files ?? [])], true); e.target.value = '' }} />
         <input ref={addInput} type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => { addFiles([...(e.target.files ?? [])], false); e.target.value = '' }} />
         <input ref={imgInput} type="file" accept="image/*" hidden onChange={(e) => { addImageFile(e.target.files?.[0]); e.target.value = '' }} />
+        <input ref={imgPagesInput} type="file" accept="image/*" multiple hidden onChange={(e) => { addImagePages([...(e.target.files ?? [])]); e.target.value = '' }} />
       </header>
 
       {!page ? (
@@ -375,7 +407,7 @@ export default function App() {
             )}
             {mode === 'pages' && (
               <PagesPanel
-                scope={scope} onScope={setScope} scopeError={resolved.error} selectedCount={picked.size} busy={busy}
+                scope={scope} onScope={setScope} scopeError={resolved.error} scopeCount={resolved.ids.length} selectedCount={picked.size} busy={busy}
                 onRotate={(delta) => !resolved.error && dispatch({ type: 'rotate', ids: resolved.ids, delta })}
                 onDelete={() => {
                   if (resolved.error) return
@@ -384,6 +416,7 @@ export default function App() {
                 }}
                 onDuplicate={() => !resolved.error && dispatch({ type: 'duplicate', ids: resolved.ids })}
                 onBlank={insertBlank} onExtract={extract} onSplit={split} onAddPdf={() => addInput.current?.click()}
+                onAddImages={() => imgPagesInput.current?.click()} onExportImages={exportImages}
               />
             )}
             {mode === 'watermark' && (

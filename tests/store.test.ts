@@ -105,6 +105,25 @@ describe('store reducer', () => {
     expect(s.doc.pages[0].annots.some((a) => a.id === 'r')).toBe(true)
   })
 
+  it('adds an image as a full-bleed page in one history step', () => {
+    let s = withPages(1)
+    const pastBefore = s.past.length
+    s = reducer(s, {
+      type: 'addImagePage',
+      index: 1,
+      size: { width: 300, height: 400 },
+      annot: { kind: 'image', asset: 'img1' },
+    })
+    expect(s.doc.pages).toHaveLength(2)
+    const added = s.doc.pages[1]
+    expect(added.src).toBeNull()
+    expect(added.media).toEqual({ x: 0, y: 0, width: 300, height: 400 })
+    expect(added.crop).toEqual(added.media)
+    expect(added.annots).toHaveLength(1)
+    expect(added.annots[0]).toMatchObject({ kind: 'image', asset: 'img1', rect: added.media })
+    expect(s.past).toHaveLength(pastBefore + 1) // one undo step, not two
+  })
+
   it('reset clears everything', () => {
     let s = withPages(2)
     s = reducer(s, { type: 'reset' })
