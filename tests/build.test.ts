@@ -93,6 +93,22 @@ describe('buildPdf', () => {
     }
   })
 
+  it('stamps a watermark at an arbitrary angle, independent of page rotation', async () => {
+    const bytes = await makePdf([[600, 800]])
+    const src = await loadSource('a', bytes)
+    for (const rotate of [0, 90, 180, 270] as const) {
+      const page: PageRef = {
+        ...src.pages[0],
+        rotation: rotate,
+        annots: [{ id: 'w', kind: 'watermark', rect: src.pages[0].crop, rotate, text: 'DRAFT', size: 72, color: [0.6, 0.6, 0.6], opacity: 0.3, angle: 45, font: 'Helvetica' }],
+      }
+      const out = await buildPdf([page], { a: bytes }, {})
+      const doc = await PDFDocument.load(out)
+      expect(doc.getPageCount()).toBe(1)
+      expect(out.byteLength).toBeGreaterThan(bytes.byteLength + 100)
+    }
+  })
+
   it('fails loudly when an annotation references a missing asset', async () => {
     const bytes = await makePdf([[100, 100]])
     const src = await loadSource('a', bytes)

@@ -1,6 +1,7 @@
 import type { RefObject } from 'react'
-import type { Annot, AnnotPatch, FontName, RGB } from '../core/model'
+import type { Annot, AnnotPatch, FontName } from '../core/model'
 import { Icon, type IconName } from './icons'
+import { FILLS, INKS, Swatches } from './swatches'
 import type { Tool } from './tools'
 
 interface Props {
@@ -21,33 +22,6 @@ const TOOLS: [Tool, string, IconName, string][] = [
   ['highlight', 'Highlight', 'highlight', 'Translucent yellow marker'],
   ['rect', 'Box', 'box', 'Outline rectangle'],
 ]
-
-const INKS: [string, RGB][] = [
-  ['Black', [0.118, 0.114, 0.102]],
-  ['Navy', [0.114, 0.169, 0.42]],
-  ['Red', [0.702, 0.149, 0.118]],
-  ['Green', [0.184, 0.369, 0.322]],
-]
-const FILLS: [string, RGB][] = [
-  ['White', [1, 1, 1]],
-  ['Yellow', [1, 0.92, 0.2]],
-  ['Mint', [0.62, 0.86, 0.74]],
-  ['Pink', [1, 0.72, 0.78]],
-]
-
-const css = (c: RGB) => `rgb(${c.map((v) => Math.round(v * 255)).join(',')})`
-const same = (a: RGB | null, b: RGB) => !!a && a.every((v, i) => Math.abs(v - b[i]) < 0.01)
-
-function Swatches({ label, list, value, onPick }: { label: string; list: [string, RGB][]; value: RGB | null; onPick: (c: RGB) => void }) {
-  return (
-    <div className="swatches" role="radiogroup" aria-label={label}>
-      <span className="hint" style={{ minWidth: 48 }}>{label}</span>
-      {list.map(([name, c]) => (
-        <button key={name} role="radio" aria-checked={same(value, c)} aria-label={name} className={`swatch ${same(value, c) ? 'on' : ''}`} style={{ background: css(c) }} onClick={() => onPick(c)} />
-      ))}
-    </div>
-  )
-}
 
 export function EditPanel({ tool, onTool, selected, onPatch, onDelete, onImage, onSignature, textRef }: Props) {
   return (

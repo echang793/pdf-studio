@@ -1,6 +1,6 @@
 import { useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import { displaySize, rectFromDisplay, rectToDisplay, type Box } from '../core/geometry'
-import type { Annot, PageRef, RGB } from '../core/model'
+import type { Annot, PageRef, RGB, WatermarkAnnot } from '../core/model'
 import { BoxEditor } from './BoxEditor'
 import { DRAW_TOOLS, type Tool } from './tools'
 
@@ -22,6 +22,7 @@ const css = (c: RGB) => `rgb(${c.map((v) => Math.round(v * 255)).join(',')})`
 const FAMILY = { Helvetica: 'Helvetica, Arial, sans-serif', Times: '"Times New Roman", Times, serif', Courier: '"Courier New", Courier, monospace' }
 
 function Content({ a, page, scale, box, url }: { a: Annot; page: PageRef; scale: number; box: Box; url?: string }) {
+  if (a.kind === 'watermark') return null // rendered read-only in WatermarkPreview instead
   // Content is upright for the rotation it was placed at; counter-rotate if the page was rotated since.
   const diff = (((page.rotation - a.rotate) % 360) + 360) % 360
   const odd = diff === 90 || diff === 270
@@ -37,6 +38,18 @@ function Content({ a, page, scale, box, url }: { a: Annot; page: PageRef; scale:
   return (
     <div className="annot-copy" style={{ ...inner, fontSize: a.size * scale, lineHeight: 1.2, color: css(a.color), fontFamily: FAMILY[a.font] }}>
       {a.text || <span className="placeholder">Double-click to type</span>}
+    </div>
+  )
+}
+
+/** Watermarks aren't drag-edited — just a centered, tilted, non-interactive preview of what Apply will stamp. */
+function WatermarkPreview({ a, page, scale, box }: { a: WatermarkAnnot; page: PageRef; scale: number; box: Box }) {
+  const diff = (((page.rotation - a.rotate) % 360) + 360) % 360
+  return (
+    <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.width, height: box.height, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'visible', pointerEvents: 'none' }}>
+      <span style={{ fontSize: a.size * scale, color: css(a.color), opacity: a.opacity, fontFamily: FAMILY[a.font], whiteSpace: 'nowrap', transform: `rotate(${diff + a.angle}deg)` }}>
+        {a.text}
+      </span>
     </div>
   )
 }
@@ -98,7 +111,10 @@ export function AnnotLayer({ page, scale, tool, selected, assetUrls, onSelect, o
       onPointerUp={up}
       onPointerCancel={up}
     >
-      {page.annots.map((a) => {
+      {page.annots.filter((a) => a.kind === 'watermark').map((a) => (
+        <WatermarkPreview key={a.id} a={a} page={page} scale={scale} box={toPx(a)} />
+      ))}
+      {page.annots.filter((a) => a.kind !== 'watermark').map((a) => {
         const box = draft?.id === a.id ? draft.rect : toPx(a)
         return (
           <BoxEditor

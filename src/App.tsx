@@ -18,8 +18,9 @@ import { SignatureModal } from './ui/SignatureModal'
 import { ThumbRail } from './ui/ThumbRail'
 import type { Tool } from './ui/tools'
 import { useFitScale } from './ui/useFitScale'
+import { WatermarkPanel, type WatermarkSpec } from './ui/WatermarkPanel'
 
-type Mode = 'crop' | 'pages' | 'edit'
+type Mode = 'crop' | 'pages' | 'watermark' | 'edit'
 const SIZES = { letter: { width: 612, height: 792 }, a4: { width: 595.28, height: 841.89 } }
 const sameMargins = (a: Margins, b: Margins) => (['top', 'right', 'bottom', 'left'] as const).every((k) => Math.abs(a[k] - b[k]) < 0.05)
 
@@ -37,6 +38,7 @@ export default function App() {
   const [showSig, setShowSig] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [unit, setUnit] = useState<Unit>('mm')
+  const [wmSpec, setWmSpec] = useState<WatermarkSpec>({ text: 'DRAFT', size: 72, color: [0.6, 0.6, 0.6], opacity: 0.3, angle: 45, font: 'Helvetica' })
   const [dragOver, setDragOver] = useState(false)
   const [name, setName] = useState('document')
   const sources = useRef<Record<string, Uint8Array>>({})
@@ -167,6 +169,18 @@ export default function App() {
     notify(`Trimmed ${Object.keys(crops).length} page(s)${blank ? `, skipped ${blank} blank` : ''}`)
   })
 
+  // ---- watermark
+  const applyWatermark = () => {
+    if (resolved.error) return
+    dispatch({ type: 'setWatermark', ids: resolved.ids, spec: { kind: 'watermark', ...wmSpec } })
+    notify(`Watermarked ${resolved.ids.length} page${resolved.ids.length === 1 ? '' : 's'}`)
+  }
+  const removeWatermark = () => {
+    if (resolved.error) return
+    dispatch({ type: 'setWatermark', ids: resolved.ids, spec: null })
+    notify(`Removed watermark from ${resolved.ids.length} page${resolved.ids.length === 1 ? '' : 's'}`)
+  }
+
   // ---- pages
   const insertBlank = (where: 'before' | 'after', which: 'letter' | 'a4' | 'same') => {
     const sz = which === 'same' ? size : SIZES[which]
@@ -250,7 +264,7 @@ export default function App() {
 
   const dirty = !!(draft && pageMargins && !sameMargins(draft, pageMargins))
 
-  const modeIcon = { crop: 'crop', pages: 'pages', edit: 'edit' } as const
+  const modeIcon = { crop: 'crop', pages: 'pages', watermark: 'watermark', edit: 'edit' } as const
 
   return (
     <div
@@ -271,7 +285,7 @@ export default function App() {
         </div>
         {page ? (
           <div className="seg modes" role="tablist" aria-label="Mode">
-            {(['crop', 'pages', 'edit'] as const).map((m) => (
+            {(['crop', 'pages', 'watermark', 'edit'] as const).map((m) => (
               <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
                 <Icon name={modeIcon[m]} size={16} />
                 {m[0].toUpperCase() + m.slice(1)}
@@ -370,6 +384,12 @@ export default function App() {
                 }}
                 onDuplicate={() => !resolved.error && dispatch({ type: 'duplicate', ids: resolved.ids })}
                 onBlank={insertBlank} onExtract={extract} onSplit={split} onAddPdf={() => addInput.current?.click()}
+              />
+            )}
+            {mode === 'watermark' && (
+              <WatermarkPanel
+                spec={wmSpec} onSpec={setWmSpec} scope={scope} onScope={setScope} scopeError={resolved.error}
+                scopeCount={resolved.ids.length} selectedCount={picked.size} busy={busy} onApply={applyWatermark} onRemove={removeWatermark}
               />
             )}
             {mode === 'edit' && (

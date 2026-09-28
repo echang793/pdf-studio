@@ -81,6 +81,30 @@ describe('store reducer', () => {
     expect(s.future).toHaveLength(0)
   })
 
+  it('applies, replaces and removes a watermark without disturbing other annots', () => {
+    let s = withPages(2)
+    s = reducer(s, { type: 'addAnnot', pageId: 'p0', annot: { id: 'r', kind: 'rect', rect: { x: 0, y: 0, width: 1, height: 1 }, rotate: 0, fill: null, stroke: null, opacity: 1 } })
+    const spec = { kind: 'watermark', text: 'DRAFT', size: 60, color: [0.5, 0.5, 0.5] as const, opacity: 0.3, angle: 45, font: 'Helvetica' } as const
+    s = reducer(s, { type: 'setWatermark', ids: ['p0', 'p1'], spec })
+    for (const p of s.doc.pages) {
+      const wm = p.annots.filter((a) => a.kind === 'watermark')
+      expect(wm).toHaveLength(1)
+      expect(wm[0]).toMatchObject({ text: 'DRAFT', rect: p.crop, rotate: p.rotation })
+    }
+    expect(s.doc.pages[0].annots.some((a) => a.id === 'r')).toBe(true)
+
+    s = reducer(s, { type: 'setWatermark', ids: ['p0'], spec: { ...spec, text: 'CONFIDENTIAL' } })
+    const wm0 = s.doc.pages[0].annots.filter((a) => a.kind === 'watermark')
+    expect(wm0).toHaveLength(1)
+    expect(wm0[0]).toMatchObject({ text: 'CONFIDENTIAL' })
+    expect(s.doc.pages[1].annots.filter((a) => a.kind === 'watermark')[0]).toMatchObject({ text: 'DRAFT' })
+
+    s = reducer(s, { type: 'setWatermark', ids: ['p0', 'p1'], spec: null })
+    expect(s.doc.pages[0].annots.some((a) => a.kind === 'watermark')).toBe(false)
+    expect(s.doc.pages[1].annots.some((a) => a.kind === 'watermark')).toBe(false)
+    expect(s.doc.pages[0].annots.some((a) => a.id === 'r')).toBe(true)
+  })
+
   it('reset clears everything', () => {
     let s = withPages(2)
     s = reducer(s, { type: 'reset' })

@@ -95,7 +95,7 @@ async function drawAnnot(ctx: Ctx, page: PDFPage, a: Annot) {
   } else if (a.kind === 'image') {
     const o = f.map(0, 0)
     page.drawImage(await image(ctx, a.asset), { x: o.x, y: o.y, width: f.w, height: f.h, rotate })
-  } else {
+  } else if (a.kind === 'text') {
     const fnt = await font(ctx, a.font)
     const lineH = a.size * 1.2
     a.text.split('\n').forEach((line, i) => {
@@ -104,6 +104,20 @@ async function drawAnnot(ctx: Ctx, page: PDFPage, a: Annot) {
       const safe = [...line].map((ch) => { try { fnt.encodeText(ch); return ch } catch { return '?' } }).join('')
       page.drawText(safe, { x: o.x, y: o.y, size: a.size, font: fnt, color: rgb(...a.color), rotate })
     })
+  } else {
+    // Watermark: centered on the annotation's rect, tilted by `angle` on top of the page's own
+    // rotation. pdf-lib rotates drawText around its (x, y) anchor, so the anchor is offset from the
+    // rect's center by the (rotated) half-width/half-height of the text, not placed at the center itself.
+    const fnt = await font(ctx, a.font)
+    const safe = [...a.text].map((ch) => { try { fnt.encodeText(ch); return ch } catch { return '?' } }).join('')
+    const center = f.map(f.w / 2, f.h / 2)
+    const total = (a.rotate + a.angle) * (Math.PI / 180)
+    const w = fnt.widthOfTextAtSize(safe, a.size)
+    const dx = -w / 2
+    const dy = -a.size * 0.35 // rough visual-center-to-baseline offset
+    const x = center.x + dx * Math.cos(total) - dy * Math.sin(total)
+    const y = center.y + dx * Math.sin(total) + dy * Math.cos(total)
+    page.drawText(safe, { x, y, size: a.size, font: fnt, color: rgb(...a.color), opacity: a.opacity, rotate: degrees(a.rotate + a.angle) })
   }
 }
 

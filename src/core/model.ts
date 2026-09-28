@@ -13,8 +13,11 @@ interface AnnotBase {
 export interface TextAnnot extends AnnotBase { kind: 'text'; text: string; size: number; color: RGB; font: FontName }
 export interface RectAnnot extends AnnotBase { kind: 'rect'; fill: RGB | null; stroke: RGB | null; opacity: number }
 export interface ImageAnnot extends AnnotBase { kind: 'image'; asset: string }
-export type Annot = TextAnnot | RectAnnot | ImageAnnot
-export type AnnotPatch = Partial<Omit<TextAnnot, 'kind' | 'id'>> & Partial<Omit<RectAnnot, 'kind' | 'id'>> & Partial<Omit<ImageAnnot, 'kind' | 'id'>>
+/** A bulk stamp, generated whole by "Apply watermark" rather than drawn interactively. `angle` tilts
+ *  it independently of the page's own rotation (0 = upright text at that rotation). */
+export interface WatermarkAnnot extends AnnotBase { kind: 'watermark'; text: string; size: number; color: RGB; opacity: number; angle: number; font: FontName }
+export type Annot = TextAnnot | RectAnnot | ImageAnnot | WatermarkAnnot
+export type AnnotPatch = Partial<Omit<TextAnnot, 'kind' | 'id'>> & Partial<Omit<RectAnnot, 'kind' | 'id'>> & Partial<Omit<ImageAnnot, 'kind' | 'id'>> & Partial<Omit<WatermarkAnnot, 'kind' | 'id'>>
 
 export interface PageRef {
   id: string
