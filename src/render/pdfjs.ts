@@ -96,6 +96,27 @@ export async function renderPageToImage(ref: PageRef, scale: number, mime: 'imag
   })
 }
 
+/** Browser-side Reencoder for core/compress.ts: decode, downscale to `maxDim`, re-encode as JPEG. */
+export async function reencodeJpeg(bytes: Uint8Array, mime: string, maxDim: number, quality: number): Promise<{ bytes: Uint8Array; width: number; height: number } | null> {
+  let bitmap: ImageBitmap
+  try {
+    bitmap = await createImageBitmap(new Blob([bytes as BlobPart], { type: mime }))
+  } catch {
+    return null // undecodable (unsupported JPEG variant, corrupt stream, etc.) — caller skips it
+  }
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height))
+  const width = Math.max(1, Math.round(bitmap.width * scale))
+  const height = Math.max(1, Math.round(bitmap.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, width, height)
+  bitmap.close()
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
+  if (!blob) return null
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), width, height }
+}
+
 /** Detect content bounds and return display margins (pt) that trim surrounding whitespace, or null if blank. */
 export async function autoTrimMargins(ref: PageRef, padPt = 6): Promise<Margins | null> {
   // ~1.5 px/pt after DPR is plenty to find edges and keeps batch trims fast.

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type DragEvent } from 'react'
+import { compressImages } from './core/compress'
 import { boxToMargins, displaySize, marginsToBox, rectFromDisplay, type Box, type Margins, type Unit } from './core/geometry'
 import { uid, type Annot, type AnnotPatch, type Asset, type PageRef } from './core/model'
 import { buildPdf, loadSource, SourceError } from './core/pdf'
 import { resolveScope, type Scope } from './core/scope'
 import { chunk, zipFiles } from './core/split'
-import { autoTrimMargins, closeAll, openForRender, renderPageToImage } from './render/pdfjs'
+import { autoTrimMargins, closeAll, openForRender, reencodeJpeg, renderPageToImage } from './render/pdfjs'
 import { initialState, reducer } from './state/store'
 import { AnnotLayer } from './ui/AnnotLayer'
 import { CropOverlay } from './ui/CropOverlay'
@@ -213,6 +214,16 @@ export default function App() {
     else downloadBytes(zipFiles(files), `${name}-images.zip`, 'application/zip')
     notify(`Exported ${files.length} image${files.length === 1 ? '' : 's'}`)
   })
+  const fmtMB = (n: number) => `${(n / 1_000_000).toFixed(n < 1_000_000 ? 2 : 1)} MB`
+  const compress = (quality: number, maxDim: number) => run(async () => {
+    const built = await build(pages)
+    const result = await compressImages(built, reencodeJpeg, { quality, maxDim })
+    downloadBytes(result.bytes, `${name}-compressed.pdf`)
+    const parts = [`${fmtMB(result.before)} → ${fmtMB(result.after)}`]
+    if (result.recompressed) parts.push(`${result.recompressed} image${result.recompressed === 1 ? '' : 's'} recompressed`)
+    if (result.skipped) parts.push(`${result.skipped} skipped`)
+    notify(parts.join(' · '))
+  })
   const addImagePages = (files: File[]) => run(async () => {
     const PX_TO_PT = 72 / 96 // treat images as 96 DPI unless the file says otherwise
     let at = index + 1 // insert after the current page, each new one after the last
@@ -416,7 +427,7 @@ export default function App() {
                 }}
                 onDuplicate={() => !resolved.error && dispatch({ type: 'duplicate', ids: resolved.ids })}
                 onBlank={insertBlank} onExtract={extract} onSplit={split} onAddPdf={() => addInput.current?.click()}
-                onAddImages={() => imgPagesInput.current?.click()} onExportImages={exportImages}
+                onAddImages={() => imgPagesInput.current?.click()} onExportImages={exportImages} onCompress={compress}
               />
             )}
             {mode === 'watermark' && (

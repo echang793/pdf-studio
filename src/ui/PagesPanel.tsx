@@ -19,6 +19,7 @@ interface Props {
   onAddPdf: () => void
   onAddImages: () => void
   onExportImages: (dpi: number, format: 'png' | 'jpeg', quality: number) => void
+  onCompress: (quality: number, maxDim: number) => void
 }
 
 export function PagesPanel(p: Props) {
@@ -27,6 +28,8 @@ export function PagesPanel(p: Props) {
   const [format, setFormat] = useState<'png' | 'jpeg'>('png')
   const [dpi, setDpi] = useState(150)
   const [quality, setQuality] = useState(0.85)
+  const [cQuality, setCQuality] = useState(0.7)
+  const [cMaxDim, setCMaxDim] = useState(1600)
   const dis = !!p.scopeError || p.busy
   return (
     <div className="panel">
@@ -111,6 +114,28 @@ export function PagesPanel(p: Props) {
         )}
         <button className="btn" disabled={dis} onClick={() => p.onExportImages(dpi, format, quality)}>
           <Icon name="extract" size={16} />Export {p.scopeCount} page{p.scopeCount === 1 ? '' : 's'}
+        </button>
+      </div>
+
+      <div className="group divided">
+        <span className="eyebrow">Compress</span>
+        <p className="hint">Shrinks JPEG images already in the PDF. Downloads a separate, compressed copy — this document is left as-is.</p>
+        <label className="field-label">
+          Image quality · {Math.round(cQuality * 100)}%
+          <input type="range" min={0.3} max={0.95} step={0.05} value={cQuality} onChange={(e) => setCQuality(Number(e.target.value))} style={{ accentColor: 'var(--accent)' }} />
+        </label>
+        <label className="field-label">
+          Max image size
+          <span className="field">
+            <select value={cMaxDim} onChange={(e) => setCMaxDim(Number(e.target.value))}>
+              <option value={900}>900 px · smallest</option>
+              <option value={1600}>1600 px · balanced</option>
+              <option value={2400}>2400 px · high quality</option>
+            </select>
+          </span>
+        </label>
+        <button className="btn" disabled={p.busy} onClick={() => p.onCompress(cQuality, cMaxDim)}>
+          <Icon name="download" size={16} />Download compressed copy
         </button>
       </div>
     </div>
