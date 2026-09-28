@@ -21,6 +21,7 @@ const TOOLS: [Tool, string, IconName, string][] = [
   ['whiteout', 'White-out', 'whiteout', 'Cover existing content with white'],
   ['highlight', 'Highlight', 'highlight', 'Translucent yellow marker'],
   ['rect', 'Box', 'box', 'Outline rectangle'],
+  ['redact', 'Redact', 'redact', 'Permanently remove content under this box (see “Download redacted copy” in Pages)'],
 ]
 
 export function EditPanel({ tool, onTool, selected, onPatch, onDelete, onImage, onSignature, textRef }: Props) {
@@ -42,7 +43,7 @@ export function EditPanel({ tool, onTool, selected, onPatch, onDelete, onImage, 
 
       {selected && (
         <div className="group divided">
-          <span className="eyebrow">Selected {selected.kind === 'rect' ? 'shape' : selected.kind}</span>
+          <span className="eyebrow">Selected {selected.kind === 'rect' ? 'shape' : selected.kind === 'redact' ? 'redaction' : selected.kind}</span>
           {selected.kind === 'text' && (
             <>
               <label className="field-label">
@@ -85,13 +86,16 @@ export function EditPanel({ tool, onTool, selected, onPatch, onDelete, onImage, 
               </label>
             </>
           )}
+          {selected.kind === 'redact' && (
+            <p className="hint">Always covers with solid white — its color can’t be changed. Move or resize it like any box.</p>
+          )}
           <button className="btn danger" onClick={onDelete}><Icon name="trash" size={16} />Delete item</button>
         </div>
       )}
 
       <div className="note">
         <Icon name="info" size={20} />
-        <p><strong>Fixing a typo?</strong> Cover it with White-out, then drop a Text box on top. Text already inside a PDF can’t be rewritten in place reliably.</p>
+        <p><strong>Fixing a typo?</strong> Cover it with White-out, then drop a Text box on top. Text already inside a PDF can’t be rewritten in place reliably. <strong>Hiding something sensitive?</strong> White-out only paints over it — use Redact instead, then “Download redacted copy” in Pages.</p>
       </div>
     </div>
   )

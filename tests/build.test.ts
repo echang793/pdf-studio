@@ -109,6 +109,19 @@ describe('buildPdf', () => {
     }
   })
 
+  it('embeds pre-rasterized pages full-bleed and leaves other pages vector, in one document', async () => {
+    const bytes = await makePdf([[600, 800], [300, 400]])
+    const src = await loadSource('a', bytes)
+    // 1x1 red PNG, reused as a stand-in "rasterized page"
+    const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0))
+    const rasterized = { [src.pages[0].id]: { png, box: { x: 0, y: 0, width: 111, height: 222 } } }
+    const out = await info(await buildPdf(src.pages, { a: bytes }, {}, rasterized))
+    expect(out).toHaveLength(2)
+    expect(out[0].size).toEqual([111, 222]) // rasterized page takes the raster's own size
+    expect(out[0].rotation).toBe(0)
+    expect(out[1].size).toEqual([300, 400]) // untouched vector page keeps its own
+  })
+
   it('fails loudly when an annotation references a missing asset', async () => {
     const bytes = await makePdf([[100, 100]])
     const src = await loadSource('a', bytes)

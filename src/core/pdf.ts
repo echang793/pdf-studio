@@ -83,7 +83,7 @@ async function image(ctx: Ctx, key: string) {
 async function drawAnnot(ctx: Ctx, page: PDFPage, a: Annot) {
   const f = annotFrame(a)
   const rotate = degrees(a.rotate)
-  if (a.kind === 'rect') {
+  if (a.kind === 'rect' || a.kind === 'redact') {
     const o = f.map(0, 0)
     page.drawRectangle({
       x: o.x, y: o.y, width: f.w, height: f.h, rotate,
@@ -121,16 +121,33 @@ async function drawAnnot(ctx: Ctx, page: PDFPage, a: Annot) {
   }
 }
 
-/** Build the final PDF from page refs. `sources` maps source id -> original bytes. */
-export async function buildPdf(pages: PageRef[], sources: Record<string, Uint8Array>, assets: Record<string, Asset>): Promise<Uint8Array> {
+export interface Rasterized { png: Uint8Array; box: Box }
+
+/**
+ * Build the final PDF from page refs. `sources` maps source id -> original bytes.
+ *
+ * `rasterized` (used for "download redacted copy") replaces specific pages wholesale with an already-
+ * rendered image instead of copying/drawing them from vectors — the caller has baked every one of that
+ * page's annotations (redaction boxes painted solid, everything else included) into that image, so no
+ * `drawAnnot` calls happen for it here, and none of its original page content is copied into the output
+ * at all. This function stays pdf-lib-only; the actual rasterization (pdf.js + canvas) is the caller's job.
+ */
+export async function buildPdf(
+  pages: PageRef[],
+  sources: Record<string, Uint8Array>,
+  assets: Record<string, Asset>,
+  rasterized?: Record<string, Rasterized>,
+): Promise<Uint8Array> {
   const out = await PDFDocument.create()
   const ctx: Ctx = { fonts: new Map(), images: new Map(), out, assets }
+  const rasterImages = new Map<string, PDFImage>()
 
-  // Copy every needed source page once per source, in one batch.
+  // Copy every needed source page once per source, in one batch. Pages that will be rasterized
+  // instead never need their original vector content, so they're left out of this entirely.
   const copied = new Map<string, Map<number, PDFPage>>()
   const docs = new Map<string, PDFDocument>()
   const needed = new Map<string, Set<number>>()
-  for (const p of pages) if (p.src) (needed.get(p.src) ?? needed.set(p.src, new Set()).get(p.src)!).add(p.srcIndex)
+  for (const p of pages) if (p.src && !rasterized?.[p.id]) (needed.get(p.src) ?? needed.set(p.src, new Set()).get(p.src)!).add(p.srcIndex)
   for (const [src, idx] of needed) {
     const bytes = sources[src]
     if (!bytes) throw new Error(`Missing source document "${src}"`)
@@ -143,6 +160,14 @@ export async function buildPdf(pages: PageRef[], sources: Record<string, Uint8Ar
 
   const used = new Set<PDFPage>()
   for (const ref of pages) {
+    const raster = rasterized?.[ref.id]
+    if (raster) {
+      const page = out.addPage([raster.box.width, raster.box.height])
+      let img = rasterImages.get(ref.id)
+      if (!img) rasterImages.set(ref.id, (img = await out.embedPng(raster.png)))
+      page.drawImage(img, { x: 0, y: 0, width: raster.box.width, height: raster.box.height })
+      continue
+    }
     let page: PDFPage
     if (ref.src) {
       const template = copied.get(ref.src)!.get(ref.srcIndex)!

@@ -20,6 +20,7 @@ const paths: Record<string, ReactNode> = {
   whiteout: <><path d="m16 3 5 5-11 11H5v-5z" /><path d="M3 21h18" /></>,
   highlight: <><path d="m9 11-5 5v4h4l5-5" /><path d="m13 7 4 4" /><path d="M9 11 15 5l4 4-6 6" /></>,
   box: <rect x="4" y="5" width="16" height="14" rx="1.5" />,
+  redact: <><rect x="3" y="7" width="18" height="10" rx="1.5" /><path d="M6 7v10M10 7v10M14 7v10M18 7v10" strokeWidth="1.4" /></>,
   image: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 17-5-5-9 8" /></>,
   signature: <path d="M2 17c3-6 5-9 6.5-8.3S6 17.5 7.5 18s4-7.5 5.5-7.5-.8 6.8 1.5 6.8 3.8-5.3 5.5-5.3M2 21h20" />,
   rotateL: <><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></>,

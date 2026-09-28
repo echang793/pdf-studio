@@ -3,8 +3,8 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import type { PDFDocumentLoadingTask, PDFPageProxy } from 'pdfjs-dist'
 import type { PageViewport } from 'pdfjs-dist/types/src/display/page_viewport'
 import { contentBounds } from '../core/autotrim'
-import { displaySize, rectToDisplay, type Margins } from '../core/geometry'
-import type { PageRef } from '../core/model'
+import { displaySize, rectToDisplay, type Box, type Margins } from '../core/geometry'
+import type { Annot, Asset, FontName, PageRef, RGB } from '../core/model'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
@@ -115,6 +115,87 @@ export async function reencodeJpeg(bytes: Uint8Array, mime: string, maxDim: numb
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
   if (!blob) return null
   return { bytes: new Uint8Array(await blob.arrayBuffer()), width, height }
+}
+
+const rgbCss = (c: RGB) => `rgb(${c.map((v) => Math.round(v * 255)).join(',')})`
+const CANVAS_FONT: Record<FontName, string> = { Helvetica: 'Helvetica, Arial, sans-serif', Times: '"Times New Roman", Times, serif', Courier: '"Courier New", Courier, monospace' }
+
+/**
+ * Paints one annotation onto a display-space canvas the same way AnnotLayer draws it on screen —
+ * used to "flatten" a page for redaction, since a rasterized page carries no separate PDF annotations
+ * of its own. `redact` always paints fully opaque solid white, ignoring whatever is in its own
+ * fill/stroke/opacity fields, so the safety guarantee holds even if those are ever something else.
+ */
+function paintAnnot(ctx: CanvasRenderingContext2D, ref: PageRef, a: Annot, dpr: number, images: Map<string, ImageBitmap>) {
+  const box = rectToDisplay(ref.media, ref.rotation, a.rect)
+  const bx = box.x * dpr, by = box.y * dpr, bw = box.width * dpr, bh = box.height * dpr
+  const diff = (((ref.rotation - a.rotate) % 360) + 360) % 360
+  const odd = diff === 90 || diff === 270
+  const w = odd ? bh : bw
+  const h = odd ? bw : bh
+  ctx.save()
+  ctx.translate(bx + bw / 2, by + bh / 2)
+  ctx.rotate((diff * Math.PI) / 180)
+  ctx.globalAlpha = 1
+  if (a.kind === 'redact') {
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(-w / 2, -h / 2, w, h)
+  } else if (a.kind === 'rect') {
+    if (a.fill) { ctx.globalAlpha = a.opacity; ctx.fillStyle = rgbCss(a.fill); ctx.fillRect(-w / 2, -h / 2, w, h) }
+    if (a.stroke) { ctx.globalAlpha = a.opacity; ctx.strokeStyle = rgbCss(a.stroke); ctx.lineWidth = 1.5 * dpr; ctx.strokeRect(-w / 2 + 0.75 * dpr, -h / 2 + 0.75 * dpr, w - 1.5 * dpr, h - 1.5 * dpr) }
+  } else if (a.kind === 'image') {
+    const img = images.get(a.asset)
+    if (img) ctx.drawImage(img, -w / 2, -h / 2, w, h)
+  } else if (a.kind === 'text') {
+    ctx.fillStyle = rgbCss(a.color)
+    ctx.font = `${a.size * dpr}px ${CANVAS_FONT[a.font]}`
+    ctx.textBaseline = 'top'
+    const lineH = a.size * 1.2 * dpr
+    a.text.split('\n').forEach((line, i) => ctx.fillText(line, -w / 2, -h / 2 + i * lineH))
+  } else {
+    ctx.globalAlpha = a.opacity
+    ctx.fillStyle = rgbCss(a.color)
+    ctx.font = `${a.size * dpr}px ${CANVAS_FONT[a.font]}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.rotate((a.angle * Math.PI) / 180)
+    ctx.fillText(a.text, 0, 0)
+  }
+  ctx.restore()
+}
+
+/**
+ * Flattens a page to a single image: base content plus every one of its annotations baked in, with
+ * any `redact` boxes painted solid white on top of everything (not just what was under them when
+ * drawn — z-order among annotations is preserved by drawing in the same order they're stored, same
+ * as the live editor, and a redact box only reliably hides what's *behind* it in that order).
+ * Used only for "download redacted copy" — the live document and a normal Download never rasterize.
+ */
+export async function rasterizePage(ref: PageRef, dpi: number, assets: Record<string, Asset>): Promise<{ png: Uint8Array; box: Box }> {
+  const scale = dpi / 72
+  const size = displaySize(ref.media, ref.rotation)
+  const full = document.createElement('canvas')
+  await renderPage(ref, full, scale).promise
+  const dpr = full.width / size.width
+  const ctx = full.getContext('2d')!
+  const images = new Map<string, ImageBitmap>()
+  for (const a of ref.annots) {
+    if (a.kind === 'image' && !images.has(a.asset)) {
+      const asset = assets[a.asset]
+      if (asset) images.set(a.asset, await createImageBitmap(new Blob([asset.bytes as BlobPart], { type: asset.mime })))
+    }
+  }
+  for (const a of ref.annots) paintAnnot(ctx, ref, a, dpr, images)
+  for (const bmp of images.values()) bmp.close()
+  const crop = rectToDisplay(ref.media, ref.rotation, ref.crop)
+  const sx = crop.x * dpr, sy = crop.y * dpr, sw = crop.width * dpr, sh = crop.height * dpr
+  const out = document.createElement('canvas')
+  out.width = Math.max(1, Math.round(sw))
+  out.height = Math.max(1, Math.round(sh))
+  out.getContext('2d')!.drawImage(full, sx, sy, sw, sh, 0, 0, out.width, out.height)
+  const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'))
+  if (!blob) throw new Error('Could not rasterize page')
+  return { png: new Uint8Array(await blob.arrayBuffer()), box: { x: 0, y: 0, width: crop.width, height: crop.height } }
 }
 
 /** Detect content bounds and return display margins (pt) that trim surrounding whitespace, or null if blank. */

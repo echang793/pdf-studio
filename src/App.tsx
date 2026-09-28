@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSS
 import { compressImages } from './core/compress'
 import { boxToMargins, displaySize, marginsToBox, rectFromDisplay, type Box, type Margins, type Unit } from './core/geometry'
 import { uid, type Annot, type AnnotPatch, type Asset, type PageRef } from './core/model'
-import { buildPdf, loadSource, SourceError } from './core/pdf'
+import { buildPdf, loadSource, SourceError, type Rasterized } from './core/pdf'
 import { resolveScope, type Scope } from './core/scope'
 import { chunk, zipFiles } from './core/split'
-import { autoTrimMargins, closeAll, openForRender, reencodeJpeg, renderPageToImage } from './render/pdfjs'
+import { autoTrimMargins, closeAll, openForRender, rasterizePage, reencodeJpeg, renderPageToImage } from './render/pdfjs'
 import { initialState, reducer } from './state/store'
 import { AnnotLayer } from './ui/AnnotLayer'
 import { CropOverlay } from './ui/CropOverlay'
@@ -140,7 +140,7 @@ export default function App() {
     }
   }, [notify])
 
-  const build = useCallback(async (list: PageRef[]) => buildPdf(list, sources.current, assets), [assets])
+  const build = useCallback(async (list: PageRef[], rasterized?: Record<string, Rasterized>) => buildPdf(list, sources.current, assets, rasterized), [assets])
 
   const run = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true)
@@ -224,6 +224,15 @@ export default function App() {
     if (result.skipped) parts.push(`${result.skipped} skipped`)
     notify(parts.join(' · '))
   })
+  const redactCount = pages.reduce((n, p) => n + (p.annots.some((a) => a.kind === 'redact') ? 1 : 0), 0)
+  const exportRedacted = () => run(async () => {
+    const targets = pages.filter((p) => p.annots.some((a) => a.kind === 'redact'))
+    if (targets.length === 0) return notify('Draw a Redact box first (Edit tab)', true)
+    const rasterized: Record<string, Rasterized> = {}
+    for (const p of targets) rasterized[p.id] = await rasterizePage(p, 300, assets)
+    downloadBytes(await build(pages, rasterized), `${name}-redacted.pdf`)
+    notify(`Downloaded a redacted copy — ${targets.length} page${targets.length === 1 ? '' : 's'} flattened to images`)
+  })
   const addImagePages = (files: File[]) => run(async () => {
     const PX_TO_PT = 72 / 96 // treat images as 96 DPI unless the file says otherwise
     let at = index + 1 // insert after the current page, each new one after the last
@@ -257,6 +266,7 @@ export default function App() {
     } else if (t === 'whiteout') addAnnot({ ...base, kind: 'rect', fill: [1, 1, 1], stroke: null, opacity: 1 })
     else if (t === 'highlight') addAnnot({ ...base, kind: 'rect', fill: [1, 0.92, 0.2], stroke: null, opacity: 0.4 })
     else if (t === 'rect') addAnnot({ ...base, kind: 'rect', fill: null, stroke: [0.85, 0.1, 0.1], opacity: 1 })
+    else if (t === 'redact') addAnnot({ ...base, kind: 'redact', fill: [1, 1, 1], stroke: null, opacity: 1 })
   }
   const placeImage = (asset: Asset, w: number, h: number) => {
     if (!page) return
@@ -428,6 +438,7 @@ export default function App() {
                 onDuplicate={() => !resolved.error && dispatch({ type: 'duplicate', ids: resolved.ids })}
                 onBlank={insertBlank} onExtract={extract} onSplit={split} onAddPdf={() => addInput.current?.click()}
                 onAddImages={() => imgPagesInput.current?.click()} onExportImages={exportImages} onCompress={compress}
+                redactCount={redactCount} onExportRedacted={exportRedacted}
               />
             )}
             {mode === 'watermark' && (

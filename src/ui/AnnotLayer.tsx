@@ -31,6 +31,12 @@ function Content({ a, page, scale, box, url }: { a: Annot; page: PageRef; scale:
     width: odd ? box.height : box.width, height: odd ? box.width : box.height,
     transform: `translate(-50%, -50%) rotate(${diff}deg)`,
   }
+  if (a.kind === 'redact') {
+    // Always the same distinctive hatch, regardless of the stored fill/stroke: what actually gets
+    // painted on export is a solid white box baked into the page — this pattern just makes it obvious,
+    // while editing, that this box does more than White-out.
+    return <div className="redact-hatch" style={inner} />
+  }
   if (a.kind === 'rect') {
     return <div style={{ ...inner, background: a.fill ? css(a.fill) : 'transparent', border: a.stroke ? `${1.5 * scale}px solid ${css(a.stroke)}` : 'none', opacity: a.opacity, boxSizing: 'border-box' }} />
   }

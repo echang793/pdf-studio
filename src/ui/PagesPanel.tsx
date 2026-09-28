@@ -20,6 +20,9 @@ interface Props {
   onAddImages: () => void
   onExportImages: (dpi: number, format: 'png' | 'jpeg', quality: number) => void
   onCompress: (quality: number, maxDim: number) => void
+  /** Number of pages that currently have at least one Redact box. */
+  redactCount: number
+  onExportRedacted: () => void
 }
 
 export function PagesPanel(p: Props) {
@@ -138,6 +141,25 @@ export function PagesPanel(p: Props) {
           <Icon name="download" size={16} />Download compressed copy
         </button>
       </div>
+
+      {p.redactCount > 0 && (
+        <div className="group divided">
+          <span className="eyebrow">Redaction</span>
+          <div className="note" style={{ marginTop: 0 }}>
+            <Icon name="redact" size={20} />
+            <p>
+              <strong>{p.redactCount} page{p.redactCount === 1 ? ' has' : 's have'} a Redact box.</strong>{' '}
+              “Download redacted copy” turns just those pages into flat images with the covered area
+              permanently gone — not selectable, not searchable, not recoverable. Everything else in the
+              document stays exactly as it is. This can’t be undone once you share the file, so check the
+              boxes are in the right place first.
+            </p>
+          </div>
+          <button className="btn primary" disabled={p.busy} onClick={p.onExportRedacted}>
+            <Icon name="redact" size={16} />Download redacted copy
+          </button>
+        </div>
+      )}
     </div>
   )
 }

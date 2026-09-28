@@ -251,7 +251,7 @@ input[type='color'] { width: 36px; height: 36px; padding: 2px; border: 1px solid
 
 /* ---- annotations ---- */
 .annot-layer { position: absolute; left: 0; top: 0; }
-.annot-layer.tool-text, .annot-layer.tool-whiteout, .annot-layer.tool-highlight, .annot-layer.tool-rect { cursor: crosshair; }
+.annot-layer.tool-text, .annot-layer.tool-whiteout, .annot-layer.tool-highlight, .annot-layer.tool-rect, .annot-layer.tool-redact { cursor: crosshair; }
 .annot-hit { position: absolute; inset: 0; overflow: hidden; }
 .annot:not(.selected):hover { outline: 1px dashed var(--accent); }
 .annot.selected::before {
@@ -260,6 +260,8 @@ input[type='color'] { width: 36px; height: 36px; padding: 2px; border: 1px solid
 }
 .annot-copy { white-space: pre; overflow: hidden; }
 .annot-copy .placeholder { color: #8c877b; font-style: italic; font-size: 12px; font-family: var(--sans); }
+.annot-redact { outline: 1.5px solid var(--danger); }
+.redact-hatch { background-image: repeating-linear-gradient(135deg, rgba(179, 38, 30, 0.55) 0 6px, rgba(255, 255, 255, 0.9) 6px 12px); box-sizing: border-box; }
 .drawing { position: absolute; border: 1.5px dashed var(--accent); background: rgba(196, 68, 28, 0.08); pointer-events: none; }
 .render-error { position: absolute; inset: 0; display: grid; place-items: center; color: var(--danger); background: #fff; }
 
