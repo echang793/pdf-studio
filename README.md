@@ -36,6 +36,12 @@ never leave your machine.
 - Images (PNG, JPEG, or anything the browser can decode).
 - Signatures: draw, type or upload. Saved signatures stay in this browser only.
 
+**Image** (separate tab next to PDF)
+- Erase a mark or blemish from one of your own images: paint over it, press Erase, and it fills in
+  from the surrounding pixels. Undo each fill, reset to the original, save as PNG or JPEG.
+- It's a plain fill, not an AI model: great on skies, walls and gradients, soft on busy textures.
+  Use it on images you own or may edit — it isn't meant for stripping other people's copyright marks.
+
 Also: undo/redo, drag-and-drop to open, dark mode, and a phone layout.
 
 **Limits:**
@@ -94,7 +100,7 @@ GitHub Pages. The build uses relative paths, so it also works on any other stati
   only when you download.
 
 ```
-src/core/    pure logic, unit-tested: geometry, page ranges, auto-trim, PDF build, split, compress
+src/core/    pure logic, unit-tested: geometry, page ranges, auto-trim, PDF build, split, compress, inpaint
 src/state/   reducer with undo/redo history
 src/render/  pdf.js loading and rendering, plus canvas work: image export, JPEG recompression,
              page rasterization for redaction

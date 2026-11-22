@@ -11,6 +11,7 @@ import { AnnotLayer } from './ui/AnnotLayer'
 import { CropOverlay } from './ui/CropOverlay'
 import { CropPanel } from './ui/CropPanel'
 import { EditPanel } from './ui/EditPanel'
+import { ImageEraser } from './ui/ImageEraser'
 import { Icon, Logo } from './ui/icons'
 import { downloadBytes, imageToAsset, isImageFile, isPdfFile, readBytes } from './ui/files'
 import { PageCanvas } from './ui/PageCanvas'
@@ -27,6 +28,7 @@ const sameMargins = (a: Margins, b: Margins) => (['top', 'right', 'bottom', 'lef
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState)
+  const [view, setView] = useState<'pdf' | 'image'>('pdf')
   const [mode, setMode] = useState<Mode>('crop')
   const [tool, setTool] = useState<Tool>('select')
   const [scope, setScopeRaw] = useState<Scope>({ mode: 'current', range: '' })
@@ -292,6 +294,7 @@ export default function App() {
   // ---- keyboard + drag/drop
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (view === 'image') return // the image tool has its own shortcuts
       const typing = e.target instanceof HTMLElement && e.target.matches('input, textarea, select, [contenteditable]')
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); dispatch({ type: e.shiftKey ? 'redo' : 'undo' }) }
@@ -309,6 +312,7 @@ export default function App() {
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault()
+    if (view === 'image') return // the image tool handles its own drops
     const files = [...e.dataTransfer.files]
     if (files.some(isPdfFile)) addFiles(files, pages.length === 0)
     else if (files.length && isImageFile(files[0]) && page) addImageFile(files[0])
@@ -329,13 +333,17 @@ export default function App() {
         <div className="brand">
           <Logo />
           <span className="wordmark">PDF <em>Studio</em></span>
-          {page && (
+          <div className="seg small light view-switch" role="tablist" aria-label="Tool">
+            <button role="tab" aria-selected={view === 'pdf'} className={view === 'pdf' ? 'on' : ''} onClick={() => setView('pdf')}>PDF</button>
+            <button role="tab" aria-selected={view === 'image'} className={view === 'image' ? 'on' : ''} onClick={() => setView('image')}>Image</button>
+          </div>
+          {view === 'pdf' && page && (
             <button className="file-chip" onClick={() => openInput.current?.click()} disabled={busy} title="Open a different PDF">
               {name}.pdf · {pages.length} page{pages.length === 1 ? '' : 's'}
             </button>
           )}
         </div>
-        {page ? (
+        {view === 'pdf' && page ? (
           <div className="seg modes" role="tablist" aria-label="Mode">
             {(['crop', 'pages', 'watermark', 'edit'] as const).map((m) => (
               <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
@@ -346,7 +354,9 @@ export default function App() {
           </div>
         ) : <span className="modes-spacer" />}
         <div className="top-actions">
-          {page ? (
+          {view === 'image' ? (
+            <span className="privacy"><Icon name="lock" size={16} /><span className="privacy-text">Runs in your browser · nothing uploaded</span></span>
+          ) : page ? (
             <>
               <button className="btn icon" onClick={() => dispatch({ type: 'undo' })} disabled={!state.past.length} title="Undo (⌘Z)" aria-label="Undo"><Icon name="undo" /></button>
               <button className="btn icon" onClick={() => dispatch({ type: 'redo' })} disabled={!state.future.length} title="Redo (⇧⌘Z)" aria-label="Redo"><Icon name="redo" /></button>
@@ -364,7 +374,9 @@ export default function App() {
         <input ref={imgPagesInput} type="file" accept="image/*" multiple hidden onChange={(e) => { addImagePages([...(e.target.files ?? [])]); e.target.value = '' }} />
       </header>
 
-      {!page ? (
+      {view === 'image' ? (
+        <ImageEraser onNotify={notify} />
+      ) : !page ? (
         <main className="empty mat">
           <div className="hero">
             <h1>Crop, trim <em>&amp;</em> sign your PDFs.</h1>

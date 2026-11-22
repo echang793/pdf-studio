@@ -118,6 +118,9 @@ input[type='color'] { width: 36px; height: 36px; padding: 2px; border: 1px solid
   margin-left: 6px; padding: 4px 10px; border: none; border-radius: 999px; background: var(--paper-lo); font-size: 13px;
   color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px;
 }
+.view-switch { margin-left: 6px; }
+.view-switch > button { height: 28px; padding: 0 12px; flex: none; }
+.workspace.eraser { grid-template-columns: 1fr 340px; }
 .top-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
 .privacy { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); }
 .privacy svg { color: var(--good); }
@@ -323,6 +326,7 @@ input[type='color'] { width: 36px; height: 36px; padding: 2px; border: 1px solid
   .topbar .modes > button { padding: 0 8px; }
   .file-chip, .privacy-text, .btn-label, .modes-spacer { display: none; }
   .workspace { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr) auto; }
+  .workspace.eraser { grid-template-columns: 1fr; grid-template-rows: minmax(360px, 1fr) auto; }
   .rail { border-right: none; border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; }
   .rail > .eyebrow { display: none; }
   .thumbs { flex-direction: row; align-items: flex-end; padding: 18px 20px 12px; gap: 18px; }
