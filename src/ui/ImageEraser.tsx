@@ -235,8 +235,8 @@ export function ImageEraser({ onNotify }: { onNotify: (text: string, error?: boo
     return (
       <main className="empty mat" onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
         <div className="hero">
-          <h1>Erase marks <em>&amp;</em> blemishes.</h1>
-          <p>Paint over something unwanted in a photo and it fills in from around it.</p>
+          <h1>Remove watermarks <em>&amp;</em> blemishes.</h1>
+          <p>Paint over a watermark, stamp, text or blemish on your image and it fills in from around it.</p>
         </div>
         <button className={`dropzone ${over ? 'over' : ''}`} onClick={() => fileInput.current?.click()}>
           <span className="corner c-nw" /><span className="corner c-ne" /><span className="corner c-sw" /><span className="corner c-se" />

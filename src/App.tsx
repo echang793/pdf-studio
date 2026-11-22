@@ -335,7 +335,7 @@ export default function App() {
           <span className="wordmark">PDF <em>Studio</em></span>
           <div className="seg small light view-switch" role="tablist" aria-label="Tool">
             <button role="tab" aria-selected={view === 'pdf'} className={view === 'pdf' ? 'on' : ''} onClick={() => setView('pdf')}>PDF</button>
-            <button role="tab" aria-selected={view === 'image'} className={view === 'image' ? 'on' : ''} onClick={() => setView('image')}>Image</button>
+            <button role="tab" aria-selected={view === 'image'} className={view === 'image' ? 'on' : ''} onClick={() => setView('image')}>Image eraser</button>
           </div>
           {view === 'pdf' && page && (
             <button className="file-chip" onClick={() => openInput.current?.click()} disabled={busy} title="Open a different PDF">
