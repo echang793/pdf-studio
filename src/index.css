@@ -118,6 +118,9 @@ input[type='color'] { width: 36px; height: 36px; padding: 2px; border: 1px solid
   margin-left: 6px; padding: 4px 10px; border: none; border-radius: 999px; background: var(--paper-lo); font-size: 13px;
   color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px;
 }
+.progress { position: relative; height: 34px; border-radius: 10px; background: var(--paper-lo); overflow: hidden; display: flex; align-items: center; }
+.progress-bar { position: absolute; inset: 0 auto 0 0; background: var(--accent-ring); transition: width 0.15s; }
+.progress > span { position: relative; padding: 0 12px; font-size: 12.5px; font-family: var(--mono); color: var(--ink); }
 .view-switch { margin-left: 6px; }
 .view-switch > button { height: 28px; padding: 0 12px; flex: none; }
 .workspace.eraser { grid-template-columns: 1fr 340px; }

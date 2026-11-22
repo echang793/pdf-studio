@@ -39,8 +39,13 @@ never leave your machine.
 **Image** (separate tab next to PDF)
 - Erase a mark or blemish from one of your own images: paint over it, press Erase, and it fills in
   from the surrounding pixels. Undo each fill, reset to the original, save as PNG or JPEG.
-- It's a plain fill, not an AI model: great on skies, walls and gradients, soft on busy textures.
-  Use it on images you own or may edit — it isn't meant for stripping other people's copyright marks.
+- **Quick fill** is instant and offline: a plain fill that's great on skies, walls and gradients and
+  soft on busy textures.
+- **AI fill** rebuilds texture using the LaMa inpainting model running in your browser (WebGPU when
+  available, otherwise CPU). First use downloads about 66 MB once (WebGPU) or 52 MB (CPU) and caches it;
+  after that a fill takes about half a second on GPU, several seconds on CPU. Your image never leaves
+  your device. If the download fails or its checksum doesn't match, it falls back to Quick fill.
+- Use it on images you own or may edit — it isn't meant for stripping other people's copyright marks.
 
 Also: undo/redo, drag-and-drop to open, dark mode, and a phone layout.
 
@@ -90,6 +95,16 @@ npm run preview   # serve the production build locally
 Every push to `main` runs `.github/workflows/deploy.yml`: tests, then build, then publish to
 GitHub Pages. The build uses relative paths, so it also works on any other static host.
 
+## Credits and downloads for AI fill
+
+Nothing here is bundled into the site; each file is fetched on first use, pinned to an exact version
+and checked against a SHA-256 before it's used (see `src/render/lama.ts`).
+
+- Model: [LaMa](https://github.com/advimman/lama) (Apache-2.0), via the quantized ONNX copy
+  [othytenk/lama-int4-int8](https://huggingface.co/othytenk/lama-int4-int8) of
+  [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX) (Apache-2.0), from huggingface.co.
+- Engine: [onnxruntime-web](https://www.npmjs.com/package/onnxruntime-web) 1.31.1 (MIT); its `.wasm` files come from cdn.jsdelivr.net.
+
 ## How it works
 
 - [pdf.js](https://mozilla.github.io/pdf.js/) renders pages. The editor draws the full MediaBox,
@@ -100,7 +115,7 @@ GitHub Pages. The build uses relative paths, so it also works on any other stati
   only when you download.
 
 ```
-src/core/    pure logic, unit-tested: geometry, page ranges, auto-trim, PDF build, split, compress, inpaint
+src/core/    pure logic, unit-tested: geometry, page ranges, auto-trim, PDF build, split, compress, inpaint (+ AI pre/post-processing)
 src/state/   reducer with undo/redo history
 src/render/  pdf.js loading and rendering, plus canvas work: image export, JPEG recompression,
              page rasterization for redaction

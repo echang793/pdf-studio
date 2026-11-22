@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type PointerEvent } from 'react'
+import { compositePatch, fromLamaOutput, maskBounds, planWindow, toLamaInput } from '../core/aiInpaint'
 import { dilateMask, inpaint } from '../core/inpaint'
+import { loadLama } from '../render/lama'
 import { downloadBytes, isImageFile, readBytes } from './files'
 import { Icon } from './icons'
 import { useFitScale } from './useFitScale'
@@ -18,6 +20,8 @@ export function ImageEraser({ onNotify }: { onNotify: (text: string, error?: boo
   const [dirty, setDirty] = useState(false) // something painted but not erased yet
   const [edits, setEdits] = useState(0)
   const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useState<'quick' | 'ai'>('quick')
+  const [ai, setAi] = useState<{ label: string; done: number; total: number } | null>(null)
   const [over, setOver] = useState(false)
   const base = useRef<HTMLCanvasElement>(null)
   const overlay = useRef<HTMLCanvasElement>(null)
@@ -96,35 +100,86 @@ export function ImageEraser({ onNotify }: { onNotify: (text: string, error?: boo
     setDirty(false)
   }, [])
 
+  /** Mask (marks dilated a little to swallow the brush's soft edge) and its bounds, or null if nothing is painted. */
+  const readMask = () => {
+    const { w, h } = img!
+    const marks = overlay.current!.getContext('2d')!.getImageData(0, 0, w, h).data
+    const raw = new Uint8Array(w * h)
+    for (let i = 0; i < raw.length; i++) if (marks[i * 4 + 3] > 0) raw[i] = 1
+    const mask = dilateMask(raw, w, h, 2)
+    const bounds = maskBounds(mask, w, h)
+    return bounds ? { mask, bounds } : null
+  }
+
+  const record = (x: number, y: number, before: ImageData) => {
+    history.current = [...history.current, { x, y, before }].slice(-20)
+    setEdits(history.current.length)
+    clearMarks()
+  }
+
+  /** Plain edge-inward fill (no download, works anywhere). */
+  const quickFill = (mask: Uint8Array, bounds: { x: number; y: number; w: number; h: number }) => {
+    const { w, h } = img!
+    const pad = 10 // context around the marks, for the fill to sample from
+    const rx = Math.max(0, bounds.x - pad), ry = Math.max(0, bounds.y - pad)
+    const rw = Math.min(w, bounds.x + bounds.w + pad) - rx, rh = Math.min(h, bounds.y + bounds.h + pad) - ry
+    const ctx = base.current!.getContext('2d')!
+    const region = ctx.getImageData(rx, ry, rw, rh)
+    const sub = new Uint8Array(rw * rh)
+    for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) sub[y * rw + x] = mask[(y + ry) * w + (x + rx)]
+    const before = ctx.getImageData(rx, ry, rw, rh)
+    const { filled } = inpaint(region.data, sub, rw, rh, { radius: Math.min(24, Math.max(6, Math.round(brush / 2))) })
+    if (filled === 0) throw new Error('The marked area covers the whole image, so there is nothing to copy from')
+    ctx.putImageData(region, rx, ry)
+    record(rx, ry, before)
+    return `Filled ${filled.toLocaleString()} pixels`
+  }
+
+  /** LaMa: cut a window around the marks, let the model fill it, blend only the marked area back. */
+  const aiFill = async (mask: Uint8Array, bounds: { x: number; y: number; w: number; h: number }) => {
+    const { w, h } = img!
+    const lama = await loadLama((label, done, total) => setAi({ label, done, total }))
+    setAi(null)
+    const win = planWindow(bounds, w, h)
+    const ctx = base.current!.getContext('2d')!
+    const region = ctx.getImageData(win.x, win.y, win.w, win.h)
+    const sub = new Uint8Array(win.w * win.h)
+    for (let y = 0; y < win.h; y++) for (let x = 0; x < win.w; x++) sub[y * win.w + x] = mask[(y + win.y) * w + (x + win.x)]
+    const { image, mask: m } = toLamaInput(region.data, sub, win.w, win.h)
+    const patch = fromLamaOutput(await lama.run(image, m), win.w, win.h)
+    const dirty = compositePatch(region.data, patch, sub, win.w, win.h, 3)
+    const before = ctx.getImageData(win.x + dirty.x, win.y + dirty.y, dirty.w, dirty.h)
+    ctx.putImageData(region, win.x, win.y, dirty.x, dirty.y, dirty.w, dirty.h)
+    record(win.x + dirty.x, win.y + dirty.y, before)
+    const soft = Math.max(win.w, win.h) > 768 ? ' (large area, so the result is softer)' : ''
+    return `AI fill done on ${lama.backend === 'webgpu' ? 'GPU' : 'CPU'}${soft}`
+  }
+
   const erase = () => {
     if (!img || !base.current || !overlay.current) return
+    const found = readMask()
+    if (!found) return onNotify('Paint over the mark first', true)
     setBusy(true)
-    // Let the "Filling…" state paint before the synchronous fill blocks the thread.
-    setTimeout(() => {
+    // Let the busy state paint before heavy work blocks the thread.
+    setTimeout(async () => {
       try {
-        const { w, h } = img
-        const marks = overlay.current!.getContext('2d')!.getImageData(0, 0, w, h).data
-        const raw = new Uint8Array(w * h)
-        for (let i = 0; i < raw.length; i++) if (marks[i * 4 + 3] > 0) raw[i] = 1
-        const mask = dilateMask(raw, w, h, 2) // swallow the anti-aliased brush edge
-        let x0 = w, y0 = h, x1 = -1, y1 = -1
-        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (mask[y * w + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y }
-        if (x1 < 0) { onNotify('Paint over the mark first', true); return }
-        const pad = 10 // context around the marks, for the fill to sample from
-        const rx = Math.max(0, x0 - pad), ry = Math.max(0, y0 - pad)
-        const rw = Math.min(w, x1 + 1 + pad) - rx, rh = Math.min(h, y1 + 1 + pad) - ry
-        const ctx = base.current!.getContext('2d')!
-        const region = ctx.getImageData(rx, ry, rw, rh)
-        const sub = new Uint8Array(rw * rh)
-        for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) sub[y * rw + x] = mask[(y + ry) * w + (x + rx)]
-        const before = ctx.getImageData(rx, ry, rw, rh)
-        const { filled } = inpaint(region.data, sub, rw, rh, { radius: Math.min(24, Math.max(6, Math.round(brush / 2))) })
-        if (filled === 0) { onNotify('Nothing to fill — the marked area covers the whole image', true); return }
-        ctx.putImageData(region, rx, ry)
-        history.current = [...history.current, { x: rx, y: ry, before }].slice(-20)
-        setEdits(history.current.length)
-        clearMarks()
-        onNotify(`Filled ${filled.toLocaleString()} pixels`)
+        let message: string
+        if (mode === 'ai') {
+          try {
+            message = await aiFill(found.mask, found.bounds)
+          } catch (e) {
+            setAi(null)
+            const why = e instanceof Error ? e.message : String(e)
+            message = `AI unavailable (${why}) — used quick fill instead. ` + quickFill(found.mask, found.bounds)
+            onNotify(message, true)
+            return
+          }
+        } else {
+          message = quickFill(found.mask, found.bounds)
+        }
+        onNotify(message)
+      } catch (e) {
+        onNotify(e instanceof Error ? e.message : String(e), true)
       } finally {
         setBusy(false)
       }
@@ -227,8 +282,24 @@ export function ImageEraser({ onNotify }: { onNotify: (text: string, error?: boo
             <input type="range" min={4} max={Math.max(60, Math.round(Math.max(img.w, img.h) / 8))} value={brush} onChange={(e) => setBrush(Number(e.target.value))} style={{ accentColor: 'var(--accent)' }} />
           </label>
           <div className="group">
+            <span className="eyebrow" id="erase-mode">Fill method</span>
+            <div className="seg light" role="radiogroup" aria-labelledby="erase-mode">
+              <button role="radio" aria-checked={mode === 'quick'} className={mode === 'quick' ? 'on' : ''} onClick={() => setMode('quick')} disabled={busy}>Quick fill</button>
+              <button role="radio" aria-checked={mode === 'ai'} className={mode === 'ai' ? 'on' : ''} onClick={() => setMode('ai')} disabled={busy}>AI fill</button>
+            </div>
+            <p className="hint">
+              {mode === 'quick'
+                ? 'Instant and offline. Best on smooth areas like sky, walls and gradients.'
+                : 'Rebuilds texture, so it handles busy backgrounds much better. First use downloads about 50–70 MB once (the model from huggingface.co, the engine from cdn.jsdelivr.net), then it’s cached. Your image never leaves this device.'}
+            </p>
+            {ai && (
+              <div className="progress" role="progressbar" aria-label={`Downloading ${ai.label}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((ai.done / ai.total) * 100)}>
+                <div className="progress-bar" style={{ width: `${Math.min(100, (ai.done / ai.total) * 100)}%` }} />
+                <span>Downloading {ai.label} · {(ai.done / 1e6).toFixed(1)} / {(ai.total / 1e6).toFixed(1)} MB</span>
+              </div>
+            )}
             <button className="btn primary big" disabled={!dirty || busy} onClick={erase}>
-              <Icon name="check" stroke={2.2} />{busy ? 'Filling…' : 'Erase marked area'}
+              <Icon name="check" stroke={2.2} />{busy ? (ai ? 'Downloading…' : mode === 'ai' ? 'Filling with AI…' : 'Filling…') : 'Erase marked area'}
             </button>
             <div className="grid2">
               <button className="btn" disabled={!dirty || busy} onClick={clearMarks}><Icon name="close" size={16} />Clear marks</button>
@@ -257,7 +328,7 @@ export function ImageEraser({ onNotify }: { onNotify: (text: string, error?: boo
           )}
           <div className="note">
             <Icon name="info" size={20} />
-            <p>This is a plain fill: great on skies, walls and gradients, soft on busy textures. Use it on images you own or may edit.</p>
+            <p>Quick fill is a plain fill: great on skies, walls and gradients, soft on busy textures; AI fill handles those better. Use it on images you own or may edit.</p>
           </div>
         </div>
       </aside>
