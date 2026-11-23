@@ -1,4 +1,4 @@
-import { compositePatch, fromLamaOutput, maskBounds, planWindow, toLamaInput, type Rect } from '../core/aiInpaint'
+import { compositePatch, fromLamaOutput, maskBounds, planTiles, planWindow, toLamaInput, type Rect } from '../core/aiInpaint'
 import { dilateMask, inpaint } from '../core/inpaint'
 import { loadLama, type AiProgress } from './lama'
 
@@ -32,20 +32,47 @@ export function quickFill(ctx: CanvasRenderingContext2D, w: number, h: number, m
   return { patch: { x: rx, y: ry, before }, message: `Filled ${filled.toLocaleString()} pixels` }
 }
 
-/** LaMa: cut a window around the marks, let the model fill it, blend only the marked area back. */
+/** Progress label for tile-by-tile fills (any other label is a file download). */
+export const FILLING = 'fill'
+const TILE = 192 // px of marked area filled per model call; the rest of the 512 window is real surroundings for it to copy from
+const yieldFrame = () => new Promise<void>((r) => setTimeout(r, 0))
+
+/**
+ * LaMa: cut a window around the marks, let the model fill it, blend only the marked area back. A mark bigger than
+ * one tile (a watermark spanning a page) is filled tile by tile at native resolution, because squeezing it into one
+ * 512 px window is what made big fills blurry. Later tiles see earlier ones as finished background.
+ */
 export async function aiFill(ctx: CanvasRenderingContext2D, w: number, h: number, mask: Uint8Array, bounds: Rect, onProgress?: AiProgress): Promise<FillResult> {
   const lama = await loadLama(onProgress)
-  const win = planWindow(bounds, w, h)
-  const region = ctx.getImageData(win.x, win.y, win.w, win.h)
-  const sub = new Uint8Array(win.w * win.h)
-  for (let y = 0; y < win.h; y++) for (let x = 0; x < win.w; x++) sub[y * win.w + x] = mask[(y + win.y) * w + (x + win.x)]
-  const { image, mask: m } = toLamaInput(region.data, sub, win.w, win.h)
-  const out = fromLamaOutput(await lama.run(image, m), win.w, win.h)
-  const dirty = compositePatch(region.data, out, sub, win.w, win.h, 3)
-  const before = ctx.getImageData(win.x + dirty.x, win.y + dirty.y, dirty.w, dirty.h)
-  ctx.putImageData(region, win.x, win.y, dirty.x, dirty.y, dirty.w, dirty.h)
-  const soft = Math.max(win.w, win.h) > 768 ? ' (large area, so the result is softer)' : ''
-  return { patch: { x: win.x + dirty.x, y: win.y + dirty.y, before }, message: `AI fill done on ${lama.backend === 'webgpu' ? 'GPU' : 'CPU'}${soft}` }
+  const tiles = planTiles(mask, w, h, TILE)
+  const pad = 4 // feather reach
+  const ux = Math.max(0, bounds.x - pad), uy = Math.max(0, bounds.y - pad)
+  const uw = Math.min(w, bounds.x + bounds.w + pad) - ux, uh = Math.min(h, bounds.y + bounds.h + pad) - uy
+  const before = ctx.getImageData(ux, uy, uw, uh)
+  const left = tiles.length > 1 ? Uint8Array.from(mask) : mask // marked pixels not filled yet
+  for (let i = 0; i < tiles.length; i++) {
+    if (tiles.length > 1) { onProgress?.(FILLING, i, tiles.length); await yieldFrame() }
+    const t = tiles[i]
+    const win = planWindow(t, w, h)
+    const region = ctx.getImageData(win.x, win.y, win.w, win.h)
+    const sub = new Uint8Array(win.w * win.h) // everything still marked in the window, so the model never copies a leftover mark
+    const own = new Uint8Array(win.w * win.h) // this tile's pixels: the only ones taken from this pass
+    for (let y = 0; y < win.h; y++) {
+      for (let x = 0; x < win.w; x++) {
+        const gx = x + win.x, gy = y + win.y
+        sub[y * win.w + x] = left[gy * w + gx]
+        if (gx >= t.x && gx < t.x + t.w && gy >= t.y && gy < t.y + t.h) own[y * win.w + x] = left[gy * w + gx]
+      }
+    }
+    const { image, mask: m } = toLamaInput(region.data, sub, win.w, win.h)
+    const out = fromLamaOutput(await lama.run(image, m), win.w, win.h)
+    const dirty = compositePatch(region.data, out, own, win.w, win.h, 3)
+    ctx.putImageData(region, win.x, win.y, dirty.x, dirty.y, dirty.w, dirty.h)
+    if (left !== mask) for (let k = 0; k < own.length; k++) if (own[k]) left[(Math.floor(k / win.w) + win.y) * w + (k % win.w) + win.x] = 0
+  }
+  const soft = Math.max(bounds.w, bounds.h) > 4 * TILE ? ' (very large area; if it looks soft, erase it in pieces)' : ''
+  const parts = tiles.length > 1 ? `, ${tiles.length} pieces` : ''
+  return { patch: { x: ux, y: uy, before }, message: `AI fill done on ${lama.backend === 'webgpu' ? 'GPU' : 'CPU'}${parts}${soft}` }
 }
 
 /** Fill with the chosen method; if AI can't load or run, say so and use the quick fill instead. */

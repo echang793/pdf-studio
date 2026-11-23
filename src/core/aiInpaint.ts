@@ -24,6 +24,35 @@ export function maskBounds(mask: Uint8Array, w: number, h: number): Rect | null 
 }
 
 /**
+ * Split a big mark into pieces the model can fill at native resolution: a grid of `core`-px cells over the
+ * mask's bounds, each reduced to the tight box of the marked pixels inside it. Empty cells are dropped, so a
+ * thin diagonal watermark costs far fewer fills than its bounding box. Row-major, non-overlapping.
+ */
+export function planTiles(mask: Uint8Array, w: number, h: number, core = 320): Rect[] {
+  const b = maskBounds(mask, w, h)
+  if (!b) return []
+  if (b.w <= core && b.h <= core) return [b]
+  const tiles: Rect[] = []
+  for (let cy = b.y; cy < b.y + b.h; cy += core) {
+    for (let cx = b.x; cx < b.x + b.w; cx += core) {
+      const x1 = Math.min(cx + core, b.x + b.w), y1 = Math.min(cy + core, b.y + b.h)
+      let x0 = x1, y0 = y1, xe = -1, ye = -1
+      for (let y = cy; y < y1; y++) {
+        for (let x = cx; x < x1; x++) {
+          if (!mask[y * w + x]) continue
+          if (x < x0) x0 = x
+          if (x > xe) xe = x
+          if (y < y0) y0 = y
+          if (y > ye) ye = y
+        }
+      }
+      if (xe >= 0) tiles.push({ x: x0, y: y0, w: xe - x0 + 1, h: ye - y0 + 1 })
+    }
+  }
+  return tiles
+}
+
+/**
  * The region of the image to send to the model: at least 512 px so small marks are filled at native
  * resolution, big enough to hold the mark plus context, centred on it, and kept inside the image.
  */

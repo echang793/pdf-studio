@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compositePatch, fromLamaOutput, maskBounds, planWindow, toLamaInput, workingScale, LAMA_SIZE } from '../src/core/aiInpaint'
+import { compositePatch, fromLamaOutput, maskBounds, planTiles, planWindow, toLamaInput, workingScale, LAMA_SIZE } from '../src/core/aiInpaint'
 
 function rgba(w: number, h: number, fn: (x: number, y: number) => [number, number, number]) {
   const d = new Uint8ClampedArray(w * h * 4)
@@ -130,5 +130,35 @@ describe('workingScale', () => {
   })
   it('never goes below half a pixel per point', () => {
     expect(workingScale({ width: 100000, height: 100000 })).toBe(0.5)
+  })
+})
+
+describe('planTiles', () => {
+  const count = (m: Uint8Array) => m.reduce((a, b) => a + b, 0)
+  it('returns one tile (the tight bounds) for a small mark, and none for an empty mask', () => {
+    expect(planTiles(rect(400, 300, 50, 60, 90, 100), 400, 300)).toEqual([{ x: 50, y: 60, w: 40, h: 40 }])
+    expect(planTiles(new Uint8Array(400 * 300), 400, 300)).toEqual([])
+  })
+  it('splits a big mark into non-overlapping tiles that cover every marked pixel, each small enough for native resolution', () => {
+    const w = 3000, h = 2000
+    const m = rect(w, h, 200, 200, 1100, 600) // 900 x 400
+    const tiles = planTiles(m, w, h, 320)
+    expect(tiles.length).toBeGreaterThan(1)
+    const seen = new Uint8Array(w * h)
+    for (const t of tiles) {
+      expect(t.w).toBeLessThanOrEqual(320)
+      expect(t.h).toBeLessThanOrEqual(320)
+      for (let y = t.y; y < t.y + t.h; y++) for (let x = t.x; x < t.x + t.w; x++) seen[y * w + x]++
+    }
+    expect(seen.reduce((a, b) => Math.max(a, b), 0)).toBe(1) // no overlap
+    for (let i = 0; i < m.length; i++) if (m[i]) expect(seen[i]).toBe(1) // all covered
+    expect(count(seen)).toBeGreaterThanOrEqual(count(m))
+  })
+  it('skips grid cells the mark never touches (a diagonal stroke needs far fewer tiles than its bounding box)', () => {
+    const w = 2000, h = 2000
+    const m = new Uint8Array(w * h)
+    for (let i = 0; i < 1900; i++) for (let k = 0; k < 20; k++) m[i * w + Math.min(w - 1, i + k)] = 1
+    const tiles = planTiles(m, w, h, 320)
+    expect(tiles.length).toBeLessThan(Math.ceil(1900 / 320) ** 2)
   })
 })

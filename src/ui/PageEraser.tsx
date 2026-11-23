@@ -4,7 +4,7 @@ import { dilateMask } from '../core/inpaint'
 import { resampleMask } from '../core/maskResample'
 import type { Asset, PageRef } from '../core/model'
 import type { Scope } from '../core/scope'
-import { fill } from '../render/fill'
+import { fill, FILLING } from '../render/fill'
 import { canvasToPngBytes, rasterizeFull, unrotateCanvas } from '../render/pdfjs'
 import { EraserStage, EraseSettings } from './EraserParts'
 import { Icon } from './icons'
@@ -109,7 +109,7 @@ export function PageEraser({ page, pages, assets, scope, onScope, scopeIds, scop
   const { dirty, busy, ai, mode } = e
   const loading = ready !== key
   const label = busy
-    ? (batch ?? (ai ? 'Downloading…' : mode === 'ai' ? 'Filling with AI…' : 'Filling…'))
+    ? (batch ?? (ai && ai.label !== FILLING ? 'Downloading…' : mode === 'ai' ? 'Filling with AI…' : 'Filling…'))
     : many ? `Erase marked area on ${scopeIds.length} pages` : 'Erase marked area'
 
   return (

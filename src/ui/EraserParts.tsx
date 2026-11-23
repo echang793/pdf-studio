@@ -1,4 +1,5 @@
 import { useRef, type ReactNode } from 'react'
+import { FILLING } from '../render/fill'
 import type { Eraser } from './useEraser'
 import { useFitScale } from './useFitScale'
 
@@ -48,9 +49,9 @@ export function EraseSettings({ eraser, maxBrush }: { eraser: Eraser; maxBrush: 
             : 'Rebuilds texture, so it handles busy backgrounds much better. First use downloads about 50–70 MB once (the model from huggingface.co, the engine from cdn.jsdelivr.net), then it’s cached. Your image never leaves this device.'}
         </p>
         {ai && (
-          <div className="progress" role="progressbar" aria-label={`Downloading ${ai.label}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((ai.done / ai.total) * 100)}>
+          <div className="progress" role="progressbar" aria-label={ai.label === FILLING ? 'Filling' : `Downloading ${ai.label}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((ai.done / ai.total) * 100)}>
             <div className="progress-bar" style={{ width: `${Math.min(100, (ai.done / ai.total) * 100)}%` }} />
-            <span>Downloading {ai.label} · {(ai.done / 1e6).toFixed(1)} / {(ai.total / 1e6).toFixed(1)} MB</span>
+            <span>{ai.label === FILLING ? `Filling piece ${ai.done + 1} of ${ai.total}` : `Downloading ${ai.label} · ${(ai.done / 1e6).toFixed(1)} / ${(ai.total / 1e6).toFixed(1)} MB`}</span>
           </div>
         )}
       </div>
