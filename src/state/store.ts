@@ -25,6 +25,7 @@ export type Action =
   | { type: 'insertBlank'; index: number; size: Size }
   | { type: 'addImagePage'; index: number; size: Size; annot: Omit<ImageAnnot, 'id' | 'rect' | 'rotate'> }
   | { type: 'setWatermark'; ids: string[]; spec: WatermarkSpec | null }
+  | { type: 'setBases'; items: Record<string, string> }
   | { type: 'addAnnot'; pageId: string; annot: Annot }
   | { type: 'updateAnnot'; pageId: string; id: string; patch: AnnotPatch }
   | { type: 'removeAnnot'; pageId: string; id: string }
@@ -92,6 +93,12 @@ function docReducer(doc: Doc, a: Action): Doc {
       const pages = [...doc.pages]
       pages.splice(Math.max(0, Math.min(a.index, pages.length)), 0, page)
       return { pages }
+    }
+    case 'setBases': {
+      // Erased pages: the image already has the page's annotations painted in, so they're cleared.
+      const ids = Object.keys(a.items).filter((id) => doc.pages.some((p) => p.id === id))
+      if (ids.length === 0) return doc
+      return mapPages(doc, ids, (p) => ({ ...p, base: { asset: a.items[p.id] }, annots: [] }))
     }
     case 'addAnnot':
       return mapPages(doc, [a.pageId], (p) => ({ ...p, annots: [...p.annots, a.annot] }))

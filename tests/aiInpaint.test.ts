@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compositePatch, fromLamaOutput, maskBounds, planWindow, toLamaInput, LAMA_SIZE } from '../src/core/aiInpaint'
+import { compositePatch, fromLamaOutput, maskBounds, planWindow, toLamaInput, workingScale, LAMA_SIZE } from '../src/core/aiInpaint'
 
 function rgba(w: number, h: number, fn: (x: number, y: number) => [number, number, number]) {
   const d = new Uint8ClampedArray(w * h * 4)
@@ -118,5 +118,17 @@ describe('compositePatch', () => {
     const mask = rect(w, h, 4, 4, 8, 8)
     compositePatch(dst, rgba(w, h, () => [250, 250, 250]), mask, w, h, 0)
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) expect(dst[(y * w + x) * 4]).toBe(mask[y * w + x] ? 250 : 5)
+  })
+})
+
+describe('workingScale', () => {
+  it('uses 300 dpi for a letter page and caps the long side near 3300 px on big pages', () => {
+    expect(workingScale({ width: 612, height: 792 })).toBeCloseTo(300 / 72, 5)
+    const big = workingScale({ width: 2592, height: 3456 })
+    expect(3456 * big).toBeLessThanOrEqual(3301)
+    expect(big).toBeLessThan(300 / 72)
+  })
+  it('never goes below half a pixel per point', () => {
+    expect(workingScale({ width: 100000, height: 100000 })).toBe(0.5)
   })
 })

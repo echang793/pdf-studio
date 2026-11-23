@@ -32,6 +32,10 @@ export interface PageRef {
   media: Box
   crop: Box
   annots: Annot[]
+  /** An image (asset key, PNG of the whole unrotated MediaBox) that stands in for the page's original
+   *  content: set when part of the page was erased. The source page is then not copied into the output,
+   *  so what was erased is really gone. */
+  base?: { asset: string }
 }
 
 export interface Asset { mime: 'image/png' | 'image/jpeg'; bytes: Uint8Array }

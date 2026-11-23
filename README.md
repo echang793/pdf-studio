@@ -36,6 +36,14 @@ never leave your machine.
 - Images (PNG, JPEG, or anything the browser can decode).
 - Signatures: draw, type or upload. Saved signatures stay in this browser only.
 
+**Erase** (PDF tab, fifth mode)
+- Remove a watermark, stamp or blemish from pages of a PDF: paint over it and press Erase. Same Quick /
+  AI fill as the Image tab. Pick This / All / Odd / Even / a range (or thumbnails) to erase the same marks
+  on many pages at once; that's one undo step. Page rotation is handled.
+- An erased page becomes a picture of itself (up to 300 dpi) with the marked area filled in. What was under the
+  marks is gone from the downloaded PDF, but text on that page can no longer be selected and its text boxes
+  and stamps are flattened in. Pages you don't erase are untouched.
+
 **Image** (separate tab next to PDF)
 - Erase a mark or blemish from one of your own images: paint over it, press Erase, and it fills in
   from the surrounding pixels. Undo each fill, reset to the original, save as PNG or JPEG.
@@ -115,7 +123,7 @@ and checked against a SHA-256 before it's used (see `src/render/lama.ts`).
   only when you download.
 
 ```
-src/core/    pure logic, unit-tested: geometry, page ranges, auto-trim, PDF build, split, compress, inpaint (+ AI pre/post-processing)
+src/core/    pure logic, unit-tested: geometry, page ranges, auto-trim, PDF build, split, compress, inpaint (+ AI pre/post-processing, mask resampling)
 src/state/   reducer with undo/redo history
 src/render/  pdf.js loading and rendering, plus canvas work: image export, JPEG recompression,
              page rasterization for redaction

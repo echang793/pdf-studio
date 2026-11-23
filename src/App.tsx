@@ -5,7 +5,7 @@ import { uid, type Annot, type AnnotPatch, type Asset, type PageRef } from './co
 import { buildPdf, loadSource, SourceError, type Rasterized } from './core/pdf'
 import { resolveScope, type Scope } from './core/scope'
 import { chunk, zipFiles } from './core/split'
-import { autoTrimMargins, closeAll, openForRender, rasterizePage, reencodeJpeg, renderPageToImage } from './render/pdfjs'
+import { autoTrimMargins, closeAll, openForRender, rasterizePage, reencodeJpeg, registerBase, renderPageToImage } from './render/pdfjs'
 import { initialState, reducer } from './state/store'
 import { AnnotLayer } from './ui/AnnotLayer'
 import { CropOverlay } from './ui/CropOverlay'
@@ -15,6 +15,7 @@ import { ImageEraser } from './ui/ImageEraser'
 import { Icon, Logo } from './ui/icons'
 import { downloadBytes, imageToAsset, isImageFile, isPdfFile, readBytes } from './ui/files'
 import { PageCanvas } from './ui/PageCanvas'
+import { PageEraser } from './ui/PageEraser'
 import { PagesPanel } from './ui/PagesPanel'
 import { SignatureModal } from './ui/SignatureModal'
 import { ThumbRail } from './ui/ThumbRail'
@@ -22,7 +23,7 @@ import type { Tool } from './ui/tools'
 import { useFitScale } from './ui/useFitScale'
 import { WatermarkPanel, type WatermarkSpec } from './ui/WatermarkPanel'
 
-type Mode = 'crop' | 'pages' | 'watermark' | 'edit'
+type Mode = 'crop' | 'pages' | 'watermark' | 'edit' | 'erase'
 const SIZES = { letter: { width: 612, height: 792 }, a4: { width: 595.28, height: 841.89 } }
 const sameMargins = (a: Margins, b: Margins) => (['top', 'right', 'bottom', 'left'] as const).every((k) => Math.abs(a[k] - b[k]) < 0.05)
 
@@ -252,6 +253,22 @@ export default function App() {
     notify(`Added ${files.length} image page${files.length === 1 ? '' : 's'}`)
   })
 
+  // ---- erase: pages whose content was replaced by an image with the marks filled in
+  const commitErased = (items: Record<string, Uint8Array>) => {
+    const keys: Record<string, string> = {}
+    const added: Record<string, Asset> = {}
+    for (const [id, bytes] of Object.entries(items)) {
+      const key = uid('erased')
+      const asset: Asset = { mime: 'image/png', bytes }
+      registerBase(key, asset)
+      keys[id] = key
+      added[key] = asset
+    }
+    setAssets((a) => ({ ...a, ...added }))
+    dispatch({ type: 'setBases', items: keys })
+    return keys
+  }
+
   // ---- edit
   const addAnnot = (a: Annot) => {
     if (!page) return
@@ -320,7 +337,7 @@ export default function App() {
 
   const dirty = !!(draft && pageMargins && !sameMargins(draft, pageMargins))
 
-  const modeIcon = { crop: 'crop', pages: 'pages', watermark: 'watermark', edit: 'edit' } as const
+  const modeIcon = { crop: 'crop', pages: 'pages', watermark: 'watermark', edit: 'edit', erase: 'whiteout' } as const
 
   return (
     <div
@@ -345,7 +362,7 @@ export default function App() {
         </div>
         {view === 'pdf' && page ? (
           <div className="seg modes" role="tablist" aria-label="Mode">
-            {(['crop', 'pages', 'watermark', 'edit'] as const).map((m) => (
+            {(['crop', 'pages', 'watermark', 'edit', 'erase'] as const).map((m) => (
               <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
                 <Icon name={modeIcon[m]} size={16} />
                 {m[0].toUpperCase() + m.slice(1)}
@@ -400,72 +417,83 @@ export default function App() {
             <span className="eyebrow">Pages</span>
             <ThumbRail pages={pages} current={state.current} picked={picked} onSelect={onThumbSelect} onMove={(from, to) => dispatch({ type: 'move', from, to })} />
           </aside>
-          <div className="stage-wrap mat">
-            <span className="ruler corner" />
-            <span className="ruler h" />
-            <span className="ruler v" />
-            <main className="stage" ref={stage}>
-              <div className="page-wrap" style={{ width: size.width * scale, height: size.height * scale }}>
-                <PageCanvas page={page} scale={scale} />
-                {mode === 'crop' && margins && <CropOverlay size={size} scale={scale} margins={margins} unit={unit} onChange={setDraft} />}
-                {mode !== 'crop' && <div className="shade-clip"><div className="crop-shade" style={cropShadeStyle(page, scale)} /></div>}
-                {mode === 'edit' && (
-                  <AnnotLayer
-                    page={page} scale={scale} tool={tool} selected={selectedAnnot} assetUrls={assetUrls}
-                    onSelect={setSelectedAnnot} onCreate={createAt}
-                    onMove={(id, rect) => dispatch({ type: 'updateAnnot', pageId: page.id, id, patch: { rect } })}
-                    onEditText={(id) => { setSelectedAnnot(id); setTimeout(() => textRef.current?.focus(), 0) }}
-                  />
-                )}
-                {mode !== 'edit' && page.annots.length > 0 && (
-                  <AnnotLayer page={page} scale={scale} tool="select" selected={null} assetUrls={assetUrls} onSelect={() => {}} onCreate={() => {}} onMove={() => {}} onEditText={() => {}} />
-                )}
+          {mode === 'erase' ? (
+            <PageEraser
+              page={page} pages={pages} assets={assets}
+              scope={scope} onScope={setScope} scopeIds={resolved.ids} scopeError={resolved.error} selectedCount={picked.size}
+              canUndo={state.past.length > 0} onUndo={() => dispatch({ type: 'undo' })}
+              onCommit={commitErased} onNotify={notify}
+            />
+          ) : (
+            <>
+            <div className="stage-wrap mat">
+              <span className="ruler corner" />
+              <span className="ruler h" />
+              <span className="ruler v" />
+              <main className="stage" ref={stage}>
+                <div className="page-wrap" style={{ width: size.width * scale, height: size.height * scale }}>
+                  <PageCanvas page={page} scale={scale} />
+                  {mode === 'crop' && margins && <CropOverlay size={size} scale={scale} margins={margins} unit={unit} onChange={setDraft} />}
+                  {mode !== 'crop' && <div className="shade-clip"><div className="crop-shade" style={cropShadeStyle(page, scale)} /></div>}
+                  {mode === 'edit' && (
+                    <AnnotLayer
+                      page={page} scale={scale} tool={tool} selected={selectedAnnot} assetUrls={assetUrls}
+                      onSelect={setSelectedAnnot} onCreate={createAt}
+                      onMove={(id, rect) => dispatch({ type: 'updateAnnot', pageId: page.id, id, patch: { rect } })}
+                      onEditText={(id) => { setSelectedAnnot(id); setTimeout(() => textRef.current?.focus(), 0) }}
+                    />
+                  )}
+                  {mode !== 'edit' && page.annots.length > 0 && (
+                    <AnnotLayer page={page} scale={scale} tool="select" selected={null} assetUrls={assetUrls} onSelect={() => {}} onCreate={() => {}} onMove={() => {}} onEditText={() => {}} />
+                  )}
+                </div>
+              </main>
+              <div className="zoom">
+                <button onClick={() => setZoom((z) => Math.max(0.25, z / 1.25))} aria-label="Zoom out">−</button>
+                <button className="pct" onClick={() => setZoom(1)} title="Fit page">{Math.round(zoom * 100)}%</button>
+                <button onClick={() => setZoom((z) => Math.min(6, z * 1.25))} aria-label="Zoom in">+</button>
+                <span className="divider" />
+                <span className="pageno">{String(index + 1).padStart(2, '0')} / {String(pages.length).padStart(2, '0')}</span>
               </div>
-            </main>
-            <div className="zoom">
-              <button onClick={() => setZoom((z) => Math.max(0.25, z / 1.25))} aria-label="Zoom out">−</button>
-              <button className="pct" onClick={() => setZoom(1)} title="Fit page">{Math.round(zoom * 100)}%</button>
-              <button onClick={() => setZoom((z) => Math.min(6, z * 1.25))} aria-label="Zoom in">+</button>
-              <span className="divider" />
-              <span className="pageno">{String(index + 1).padStart(2, '0')} / {String(pages.length).padStart(2, '0')}</span>
             </div>
-          </div>
-          <aside className="side">
-            {mode === 'crop' && margins && (
-              <CropPanel
-                margins={margins} onMargins={setDraft} unit={unit} onUnit={setUnit} scopeCount={resolved.ids.length} scope={scope} onScope={setScope} scopeError={resolved.error} selectedCount={picked.size}
-                dirty={dirty} busy={busy} onApply={applyCrop} onAutoTrim={autoTrim} onRevertDraft={() => setDraft(null)}
-                onReset={() => { if (!resolved.error) { dispatch({ type: 'resetCrop', ids: resolved.ids }); setDraft(null) } }}
-              />
-            )}
-            {mode === 'pages' && (
-              <PagesPanel
-                scope={scope} onScope={setScope} scopeError={resolved.error} scopeCount={resolved.ids.length} selectedCount={picked.size} busy={busy}
-                onRotate={(delta) => !resolved.error && dispatch({ type: 'rotate', ids: resolved.ids, delta })}
-                onDelete={() => {
-                  if (resolved.error) return
-                  if (resolved.ids.length >= pages.length) return notify('Can’t delete every page', true)
-                  dispatch({ type: 'delete', ids: resolved.ids })
-                }}
-                onDuplicate={() => !resolved.error && dispatch({ type: 'duplicate', ids: resolved.ids })}
-                onBlank={insertBlank} onExtract={extract} onSplit={split} onAddPdf={() => addInput.current?.click()}
-                onAddImages={() => imgPagesInput.current?.click()} onExportImages={exportImages} onCompress={compress}
-                redactCount={redactCount} onExportRedacted={exportRedacted}
-              />
-            )}
-            {mode === 'watermark' && (
-              <WatermarkPanel
-                spec={wmSpec} onSpec={setWmSpec} scope={scope} onScope={setScope} scopeError={resolved.error}
-                scopeCount={resolved.ids.length} selectedCount={picked.size} busy={busy} onApply={applyWatermark} onRemove={removeWatermark}
-              />
-            )}
-            {mode === 'edit' && (
-              <EditPanel
-                tool={tool} onTool={setTool} selected={annot} onPatch={patchAnnot} onDelete={deleteAnnot}
-                onImage={() => imgInput.current?.click()} onSignature={() => setShowSig(true)} textRef={textRef}
-              />
-            )}
-          </aside>
+            <aside className="side">
+              {mode === 'crop' && margins && (
+                <CropPanel
+                  margins={margins} onMargins={setDraft} unit={unit} onUnit={setUnit} scopeCount={resolved.ids.length} scope={scope} onScope={setScope} scopeError={resolved.error} selectedCount={picked.size}
+                  dirty={dirty} busy={busy} onApply={applyCrop} onAutoTrim={autoTrim} onRevertDraft={() => setDraft(null)}
+                  onReset={() => { if (!resolved.error) { dispatch({ type: 'resetCrop', ids: resolved.ids }); setDraft(null) } }}
+                />
+              )}
+              {mode === 'pages' && (
+                <PagesPanel
+                  scope={scope} onScope={setScope} scopeError={resolved.error} scopeCount={resolved.ids.length} selectedCount={picked.size} busy={busy}
+                  onRotate={(delta) => !resolved.error && dispatch({ type: 'rotate', ids: resolved.ids, delta })}
+                  onDelete={() => {
+                    if (resolved.error) return
+                    if (resolved.ids.length >= pages.length) return notify('Can’t delete every page', true)
+                    dispatch({ type: 'delete', ids: resolved.ids })
+                  }}
+                  onDuplicate={() => !resolved.error && dispatch({ type: 'duplicate', ids: resolved.ids })}
+                  onBlank={insertBlank} onExtract={extract} onSplit={split} onAddPdf={() => addInput.current?.click()}
+                  onAddImages={() => imgPagesInput.current?.click()} onExportImages={exportImages} onCompress={compress}
+                  redactCount={redactCount} onExportRedacted={exportRedacted}
+                />
+              )}
+              {mode === 'watermark' && (
+                <WatermarkPanel
+                  spec={wmSpec} onSpec={setWmSpec} scope={scope} onScope={setScope} scopeError={resolved.error}
+                  scopeCount={resolved.ids.length} selectedCount={picked.size} busy={busy} onApply={applyWatermark} onRemove={removeWatermark}
+                />
+              )}
+              {mode === 'edit' && (
+                <EditPanel
+                  tool={tool} onTool={setTool} selected={annot} onPatch={patchAnnot} onDelete={deleteAnnot}
+                  onImage={() => imgInput.current?.click()} onSignature={() => setShowSig(true)} textRef={textRef}
+                />
+              )}
+            </aside>
+            </>
+          )}
         </div>
       )}
 

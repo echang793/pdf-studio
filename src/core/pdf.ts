@@ -147,7 +147,7 @@ export async function buildPdf(
   const copied = new Map<string, Map<number, PDFPage>>()
   const docs = new Map<string, PDFDocument>()
   const needed = new Map<string, Set<number>>()
-  for (const p of pages) if (p.src && !rasterized?.[p.id]) (needed.get(p.src) ?? needed.set(p.src, new Set()).get(p.src)!).add(p.srcIndex)
+  for (const p of pages) if (p.src && !p.base && !rasterized?.[p.id]) (needed.get(p.src) ?? needed.set(p.src, new Set()).get(p.src)!).add(p.srcIndex)
   for (const [src, idx] of needed) {
     const bytes = sources[src]
     if (!bytes) throw new Error(`Missing source document "${src}"`)
@@ -169,7 +169,13 @@ export async function buildPdf(
       continue
     }
     let page: PDFPage
-    if (ref.src) {
+    if (ref.base) {
+      // Erased page: only the image goes in; none of the source page's content is copied.
+      const m = ref.media
+      page = out.addPage([m.width, m.height])
+      page.setMediaBox(m.x, m.y, m.width, m.height)
+      page.drawImage(await image(ctx, ref.base.asset), { x: m.x, y: m.y, width: m.width, height: m.height })
+    } else if (ref.src) {
       const template = copied.get(ref.src)!.get(ref.srcIndex)!
       if (used.has(template)) {
         // Duplicate of an already-placed page: copy it again from its source.

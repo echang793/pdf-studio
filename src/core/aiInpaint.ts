@@ -141,3 +141,11 @@ export function compositePatch(dst: Uint8ClampedArray, patch: Uint8ClampedArray,
   }
   return { x: x0, y: y0, w: rw, h: rh }
 }
+
+/**
+ * Pixels per PDF point to rasterize a page at for erasing: up to 300 dpi, but never more than ~3300 px
+ * on the long side, so fills stay fast and memory stays sane on big pages.
+ */
+export function workingScale(media: { width: number; height: number }): number {
+  return Math.max(0.5, Math.min(300 / 72, 3300 / Math.max(media.width, media.height)))
+}

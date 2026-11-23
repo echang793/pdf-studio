@@ -9,6 +9,7 @@ export function PageCanvas({ page, scale, className }: { page: PageRef; scale: n
   const [error, setError] = useState<string | null>(null)
   const size = displaySize(page.media, page.rotation)
   const { src, srcIndex, rotation, media } = page
+  const baseKey = page.base?.asset ?? null
 
   useEffect(() => {
     const canvas = ref.current
@@ -17,7 +18,7 @@ export function PageCanvas({ page, scale, className }: { page: PageRef; scale: n
     job.promise.then(() => setError(null), (e) => setError(e instanceof Error ? e.message : String(e)))
     return job.cancel
     // eslint-disable-next-line react-hooks/exhaustive-deps -- geometry fields below are the real inputs
-  }, [src, srcIndex, rotation, media.x, media.y, media.width, media.height, scale])
+  }, [src, srcIndex, rotation, baseKey, media.x, media.y, media.width, media.height, scale])
 
   return (
     <>

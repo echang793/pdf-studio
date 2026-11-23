@@ -18,6 +18,37 @@ export function openForRender(id: string, bytes: Uint8Array) {
 export function closeAll() {
   for (const task of docs.values()) task.destroy().catch(() => {})
   docs.clear()
+  baseAssets.clear()
+  for (const p of baseBitmaps.values()) p.then((b) => b.close(), () => {})
+  baseBitmaps.clear()
+}
+
+// Erased pages carry an image (PageRef.base) instead of their source content. The encoded images are
+// registered here by asset key; decoded bitmaps are kept for only a few at a time (they're large).
+const baseAssets = new Map<string, Asset>()
+const baseBitmaps = new Map<string, Promise<ImageBitmap>>()
+const BASE_KEEP = 4
+
+export function registerBase(key: string, asset: Asset) {
+  baseAssets.set(key, asset)
+}
+
+function baseBitmap(key: string): Promise<ImageBitmap> {
+  let p = baseBitmaps.get(key)
+  if (p) {
+    baseBitmaps.delete(key) // refresh recency
+  } else {
+    const asset = baseAssets.get(key)
+    if (!asset) return Promise.reject(new Error('Erased page image is missing'))
+    p = createImageBitmap(new Blob([asset.bytes as BlobPart], { type: asset.mime }))
+  }
+  baseBitmaps.set(key, p)
+  while (baseBitmaps.size > BASE_KEEP) {
+    const [oldest] = baseBitmaps.keys()
+    baseBitmaps.get(oldest)!.then((b) => b.close(), () => {})
+    baseBitmaps.delete(oldest)
+  }
+  return p
 }
 
 async function getPage(ref: PageRef): Promise<PDFPageProxy | null> {
@@ -40,16 +71,28 @@ function mediaViewport(page: PDFPageProxy, ref: PageRef, scale: number): PageVie
 
 export interface RenderJob { promise: Promise<void>; cancel: () => void }
 
-/** Render the whole media box of a page (at its display rotation) into a canvas. */
-export function renderPage(ref: PageRef, canvas: HTMLCanvasElement, scale: number): RenderJob {
+/** Draw an upright-unrotated page image into a display-rotated canvas of w x h px. */
+function drawBase(ctx: CanvasRenderingContext2D, bmp: ImageBitmap, rotation: number, w: number, h: number) {
+  const odd = rotation % 180 !== 0
+  const iw = odd ? h : w
+  const ih = odd ? w : h
+  ctx.save()
+  ctx.translate(w / 2, h / 2)
+  ctx.rotate((rotation * Math.PI) / 180)
+  ctx.drawImage(bmp, -iw / 2, -ih / 2, iw, ih)
+  ctx.restore()
+}
+
+/** `pixelScale` = canvas pixels per PDF point. */
+function renderCore(ref: PageRef, canvas: HTMLCanvasElement, pixelScale: number): RenderJob {
   let cancelled = false
   let task: { cancel: () => void } | null = null
   const promise = (async () => {
     const size = displaySize(ref.media, ref.rotation)
-    const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    const w = Math.max(1, Math.floor(size.width * scale * dpr))
-    const h = Math.max(1, Math.floor(size.height * scale * dpr))
-    const page = await getPage(ref)
+    const w = Math.max(1, Math.floor(size.width * pixelScale))
+    const h = Math.max(1, Math.floor(size.height * pixelScale))
+    const bmp = ref.base ? await baseBitmap(ref.base.asset) : null
+    const page = bmp ? null : await getPage(ref)
     if (cancelled) return
     // Render to an offscreen canvas first so a cancelled render never blanks the visible one.
     const off = document.createElement('canvas')
@@ -58,8 +101,10 @@ export function renderPage(ref: PageRef, canvas: HTMLCanvasElement, scale: numbe
     const ctx = off.getContext('2d')!
     ctx.fillStyle = '#fff'
     ctx.fillRect(0, 0, w, h)
-    if (page) {
-      const t = page.render({ canvas: off, canvasContext: ctx, viewport: mediaViewport(page, ref, scale * dpr) })
+    if (bmp) {
+      drawBase(ctx, bmp, ref.rotation, w, h)
+    } else if (page) {
+      const t = page.render({ canvas: off, canvasContext: ctx, viewport: mediaViewport(page, ref, pixelScale) })
       task = t
       try {
         await t.promise
@@ -74,6 +119,11 @@ export function renderPage(ref: PageRef, canvas: HTMLCanvasElement, scale: numbe
     canvas.getContext('2d')!.drawImage(off, 0, 0)
   })()
   return { promise, cancel: () => { cancelled = true; task?.cancel() } }
+}
+
+/** Render the whole media box of a page (at its display rotation) into a canvas. */
+export function renderPage(ref: PageRef, canvas: HTMLCanvasElement, scale: number): RenderJob {
+  return renderCore(ref, canvas, scale * Math.min(window.devicePixelRatio || 1, 2))
 }
 
 /** Render a page's *cropped* area (what Download would show) to an encoded image, at `scale` px/pt. */
@@ -196,6 +246,47 @@ export async function rasterizePage(ref: PageRef, dpi: number, assets: Record<st
   const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'))
   if (!blob) throw new Error('Could not rasterize page')
   return { png: new Uint8Array(await blob.arrayBuffer()), box: { x: 0, y: 0, width: crop.width, height: crop.height } }
+}
+
+/**
+ * The whole MediaBox as a canvas at exactly `pxPerPt` pixels per point (display orientation), with the
+ * page's annotations painted in: what the editor shows, as pixels, ready to paint over and fill.
+ */
+export async function rasterizeFull(ref: PageRef, pxPerPt: number, assets: Record<string, Asset>): Promise<HTMLCanvasElement> {
+  const size = displaySize(ref.media, ref.rotation)
+  const canvas = document.createElement('canvas')
+  await renderCore(ref, canvas, pxPerPt).promise
+  const dpr = canvas.width / size.width
+  const ctx = canvas.getContext('2d')!
+  const images = new Map<string, ImageBitmap>()
+  for (const a of ref.annots) {
+    if (a.kind === 'image' && !images.has(a.asset)) {
+      const asset = assets[a.asset]
+      if (asset) images.set(a.asset, await createImageBitmap(new Blob([asset.bytes as BlobPart], { type: asset.mime })))
+    }
+  }
+  for (const a of ref.annots) paintAnnot(ctx, ref, a, dpr, images)
+  for (const bmp of images.values()) bmp.close()
+  return canvas
+}
+
+/** Undo the page's display rotation so the image lines up with the unrotated MediaBox (what a PDF page draws into). */
+export function unrotateCanvas(src: HTMLCanvasElement, rotation: number): HTMLCanvasElement {
+  const odd = rotation % 180 !== 0
+  const out = document.createElement('canvas')
+  out.width = odd ? src.height : src.width
+  out.height = odd ? src.width : src.height
+  const ctx = out.getContext('2d')!
+  ctx.translate(out.width / 2, out.height / 2)
+  ctx.rotate((-rotation * Math.PI) / 180)
+  ctx.drawImage(src, -src.width / 2, -src.height / 2)
+  return out
+}
+
+export async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  if (!blob) throw new Error('Could not encode image')
+  return new Uint8Array(await blob.arrayBuffer())
 }
 
 /** Detect content bounds and return display margins (pt) that trim surrounding whitespace, or null if blank. */
