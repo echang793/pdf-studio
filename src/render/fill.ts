@@ -1,11 +1,21 @@
 import { compositePatch, fromLamaOutput, maskBounds, planTiles, planWindow, toLamaInput, type Rect } from '../core/aiInpaint'
 import { dilateMask, inpaint } from '../core/inpaint'
+import { estimateTint, removeTint } from '../core/unmix'
 import { loadLama, type AiProgress } from './lama'
 
 /** What a fill replaced, so it can be put back. */
 export interface Patch { x: number; y: number; before: ImageData }
-export interface FillResult { patch: Patch; message: string; failed?: boolean }
-export type FillMode = 'quick' | 'ai'
+export interface FillResult {
+  patch: Patch
+  message: string
+  failed?: boolean
+  /** Nothing was changed (e.g. no watermark colour found); the caller should not record an edit. */
+  unchanged?: boolean
+}
+export type FillMode = 'quick' | 'ai' | 'tint'
+/** Settings for the tint remover: `strength` null = work it out from the image. */
+export interface TintSettings { strength: number | null; coverage: 'color' | 'paint' }
+export const DEFAULT_TINT: TintSettings = { strength: null, coverage: 'color' }
 
 /** Mask from the painted marks (alpha > 0), dilated a little to swallow the brush's soft edge. Null if nothing is painted. */
 export function readMask(marks: ImageData): { mask: Uint8Array; bounds: Rect } | null {
@@ -30,6 +40,32 @@ export function quickFill(ctx: CanvasRenderingContext2D, w: number, h: number, m
   if (filled === 0) throw new Error('The marked area covers the whole image, so there is nothing to copy from')
   ctx.putImageData(region, rx, ry)
   return { patch: { x: rx, y: ry, before }, message: `Filled ${filled.toLocaleString()} pixels` }
+}
+
+/**
+ * Undo a translucent watermark instead of painting over it: the marked pixels get their original colour back
+ * (text underneath included), and nothing outside the marks, or in them where the watermark isn't, changes.
+ */
+export function tintFill(ctx: CanvasRenderingContext2D, w: number, h: number, mask: Uint8Array, bounds: Rect, s: TintSettings): FillResult {
+  const pad = 28 // a little more than the estimator's look-around ring
+  const rx = Math.max(0, bounds.x - pad), ry = Math.max(0, bounds.y - pad)
+  const rw = Math.min(w, bounds.x + bounds.w + pad) - rx, rh = Math.min(h, bounds.y + bounds.h + pad) - ry
+  const region = ctx.getImageData(rx, ry, rw, rh)
+  const before = new ImageData(Uint8ClampedArray.from(region.data), rw, rh)
+  const sub = new Uint8Array(rw * rh)
+  for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) sub[y * rw + x] = mask[(y + ry) * w + (x + rx)]
+  const found = estimateTint(region.data, sub, rw, rh, s.coverage)
+  if (!found) {
+    const hint = s.coverage === 'color'
+      ? 'Could not find a coloured watermark in the painted area. For a grey one, switch "Find the watermark by" to "My painting" and paint right over it.'
+      : 'Could not find the watermark in the painted area. Paint over it, including some page around it.'
+    return { patch: { x: rx, y: ry, before }, message: hint, failed: true, unchanged: true }
+  }
+  const strength = s.strength ?? found.strength
+  const changed = removeTint(region.data, sub, rw, rh, { ...found, strength, coverage: s.coverage })
+  if (changed === 0) return { patch: { x: rx, y: ry, before }, message: 'Nothing to remove: the painted area has no watermark in it.', failed: true, unchanged: true }
+  ctx.putImageData(region, rx, ry)
+  return { patch: { x: rx, y: ry, before }, message: `Removed the watermark from ${changed.toLocaleString()} pixels (strength ${Math.round(strength * 100)}%${s.strength == null ? ', auto' : ''})` }
 }
 
 /** Progress label for tile-by-tile fills (any other label is a file download). */
@@ -76,8 +112,9 @@ export async function aiFill(ctx: CanvasRenderingContext2D, w: number, h: number
 }
 
 /** Fill with the chosen method; if AI can't load or run, say so and use the quick fill instead. */
-export async function fill(mode: FillMode, ctx: CanvasRenderingContext2D, w: number, h: number, mask: Uint8Array, bounds: Rect, brush: number, onProgress?: AiProgress): Promise<FillResult> {
+export async function fill(mode: FillMode, ctx: CanvasRenderingContext2D, w: number, h: number, mask: Uint8Array, bounds: Rect, brush: number, onProgress?: AiProgress, tint: TintSettings = DEFAULT_TINT): Promise<FillResult> {
   if (mode === 'quick') return quickFill(ctx, w, h, mask, bounds, brush)
+  if (mode === 'tint') return tintFill(ctx, w, h, mask, bounds, tint)
   try {
     return await aiFill(ctx, w, h, mask, bounds, onProgress)
   } catch (e) {

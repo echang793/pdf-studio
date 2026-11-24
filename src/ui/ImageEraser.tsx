@@ -87,7 +87,7 @@ export function ImageEraser({ onNotify }: { onNotify: (text: string, error?: boo
           <EraseSettings eraser={e} maxBrush={Math.max(60, Math.round(Math.max(img.w, img.h) / 8))} />
           <div className="group">
             <button className="btn primary big" disabled={!dirty || busy} onClick={e.erase}>
-              <Icon name="check" stroke={2.2} />{busy ? (ai && ai.label !== FILLING ? 'Downloading…' : mode === 'ai' ? 'Filling with AI…' : 'Filling…') : 'Erase marked area'}
+              <Icon name="check" stroke={2.2} />{busy ? (ai && ai.label !== FILLING ? 'Downloading…' : mode === 'ai' ? 'Filling with AI…' : mode === 'tint' ? 'Removing…' : 'Filling…') : mode === 'tint' ? 'Remove watermark' : 'Erase marked area'}
             </button>
             <div className="grid2">
               <button className="btn" disabled={!dirty || busy} onClick={e.clearMarks}><Icon name="close" size={16} />Clear marks</button>

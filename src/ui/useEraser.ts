@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
-import { fill, readMask, type FillMode, type Patch } from '../render/fill'
+import { DEFAULT_TINT, fill, readMask, type FillMode, type Patch, type TintSettings } from '../render/fill'
 
 const MARK = 'rgb(229, 72, 77)'
 
@@ -21,7 +21,8 @@ export function useEraser({ onNotify, keys = true, onFilled }: Options) {
   const [dirty, setDirty] = useState(false) // something painted but not erased yet
   const [edits, setEdits] = useState(0)
   const [busy, setBusy] = useState(false)
-  const [mode, setMode] = useState<FillMode>('ai')
+  const [mode, setMode] = useState<FillMode>('tint')
+  const [tint, setTint] = useState<TintSettings>(DEFAULT_TINT)
   const [ai, setAi] = useState<{ label: string; done: number; total: number } | null>(null)
   const base = useRef<HTMLCanvasElement>(null)
   const overlay = useRef<HTMLCanvasElement>(null)
@@ -107,8 +108,9 @@ export function useEraser({ onNotify, keys = true, onFilled }: Options) {
     setTimeout(async () => {
       try {
         const ctx = base.current!.getContext('2d')!
-        const r = await fill(mode, ctx, source.w, source.h, found.mask, found.bounds, brush, (label, done, total) => setAi({ label, done, total }))
+        const r = await fill(mode, ctx, source.w, source.h, found.mask, found.bounds, brush, (label, done, total) => setAi({ label, done, total }), tint)
         setAi(null)
+        if (r.unchanged) return onNotify(r.message, true) // nothing changed: keep the marks so they can be adjusted
         history.current = [...history.current, r.patch].slice(-20)
         setEdits(history.current.length)
         clearMarks()
@@ -150,6 +152,6 @@ export function useEraser({ onNotify, keys = true, onFilled }: Options) {
     return () => window.removeEventListener('keydown', onKey)
   }, [keys, undo, clearMarks])
 
-  return { source, base, overlay, brush, setBrush, dirty, edits, busy, setBusy, mode, setMode, ai, setAi, load, down, move, up, clearMarks, marksMask, erase, undo, reset }
+  return { source, base, overlay, brush, setBrush, dirty, edits, busy, setBusy, mode, setMode, tint, setTint, ai, setAi, load, down, move, up, clearMarks, marksMask, erase, undo, reset }
 }
 export type Eraser = ReturnType<typeof useEraser>

@@ -40,7 +40,14 @@ never leave your machine.
 - Remove a watermark, stamp or blemish from pages of a PDF: paint over it and press Erase. Same Quick /
   AI fill as the Image tab. Pick This / All / Odd / Even / a range (or thumbnails) to erase the same marks
   on many pages at once; that's one undo step. Page rotation is handled.
-- AI fill is the default. Marks bigger than one model window (a watermark across a page) are filled piece by piece at
+- **Remove tint** (default) is for a see-through watermark laid over the page, the common kind. It doesn't paint
+  over anything: it works out the watermark's colour and opacity from the page and undoes the blend, so blank
+  page comes back as blank page and text under the watermark comes back as text, pixel-accurate. Pixels the
+  watermark doesn't touch aren't changed, even inside your painted area. It finds the watermark by its colour;
+  for a grey one choose "My painting" and paint right over it. Strength is estimated automatically (slider to
+  override; it only matters where the watermark sits on dark pixels). If nothing is found it says so and
+  changes nothing.
+- **AI fill** is for what can't be undone (a solid or opaque mark, a logo over a photo). Marks bigger than one model window (a watermark across a page) are filled piece by piece at
   the page's full resolution, so text stays sharp instead of being squeezed and blurred. Quick fill is a plain
   fill and goes soft on anything but smooth areas. Paint snugly over the mark: a thick band gives the model little
   to copy from, and results get worse the bigger the hole.

@@ -78,6 +78,8 @@ export function PageEraser({ page, pages, assets, scope, onScope, scopeIds, scop
       try {
         const out: Record<string, Uint8Array> = {}
         let fellBack: string | null = null
+        let skipped = 0
+        let why: string | null = null
         for (const [i, id] of scopeIds.entries()) {
           setBatch(`Page ${i + 1} of ${scopeIds.length}…`)
           const p = pages.find((x) => x.id === id)!
@@ -86,16 +88,17 @@ export function PageEraser({ page, pages, assets, scope, onScope, scopeIds, scop
           const bounds = maskBounds(mask, canvas.width, canvas.height)
           if (!bounds) continue
           const ctx = canvas.getContext('2d')!
-          const r = await fill(e.mode, ctx, canvas.width, canvas.height, mask, bounds, Math.round(e.brush * (canvas.width / marks.w)), (label, done, total) => e.setAi({ label, done, total }))
+          const r = await fill(e.mode, ctx, canvas.width, canvas.height, mask, bounds, Math.round(e.brush * (canvas.width / marks.w)), (label, done, total) => e.setAi({ label, done, total }), e.tint)
           e.setAi(null)
+          if (r.unchanged) { skipped++; if (!why) why = r.message; continue }
           if (r.failed && !fellBack) fellBack = r.message
           out[id] = await canvasToPngBytes(unrotateCanvas(canvas, p.rotation))
         }
         const n = Object.keys(out).length
-        if (n === 0) return onNotify('Nothing to erase on those pages', true)
+        if (n === 0) return onNotify(why ?? 'Nothing to erase on those pages', true)
         onCommit(out)
         e.clearMarks()
-        onNotify(fellBack ?? `Erased the marks on ${n} page${n === 1 ? '' : 's'}`, !!fellBack)
+        onNotify(fellBack ?? `${e.mode === 'tint' ? 'Removed the watermark on' : 'Erased the marks on'} ${n} page${n === 1 ? '' : 's'}${skipped ? `; ${skipped} page${skipped === 1 ? ' had' : 's had'} no watermark to remove` : ''}`, !!fellBack)
       } catch (err) {
         e.setAi(null)
         onNotify(err instanceof Error ? err.message : String(err), true)
@@ -109,8 +112,8 @@ export function PageEraser({ page, pages, assets, scope, onScope, scopeIds, scop
   const { dirty, busy, ai, mode } = e
   const loading = ready !== key
   const label = busy
-    ? (batch ?? (ai && ai.label !== FILLING ? 'Downloading…' : mode === 'ai' ? 'Filling with AI…' : 'Filling…'))
-    : many ? `Erase marked area on ${scopeIds.length} pages` : 'Erase marked area'
+    ? (batch ?? (ai && ai.label !== FILLING ? 'Downloading…' : mode === 'ai' ? 'Filling with AI…' : mode === 'tint' ? 'Removing…' : 'Filling…'))
+    : many ? `${mode === 'tint' ? 'Remove watermark' : 'Erase marked area'} on ${scopeIds.length} pages` : mode === 'tint' ? 'Remove watermark' : 'Erase marked area'
 
   return (
     <>
