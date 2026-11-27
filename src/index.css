@@ -124,6 +124,25 @@ input[type='color'] { width: 36px; height: 36px; padding: 2px; border: 1px solid
 .view-switch { margin-left: 6px; }
 .view-switch > button { height: 28px; padding: 0 12px; flex: none; }
 .workspace.eraser { grid-template-columns: 1fr 340px; }
+.workspace.compare { grid-template-columns: 190px 1fr 340px; }
+.compare-drops { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: min(860px, 100%); }
+.compare-drops .dropzone { width: 100%; min-height: 200px; }
+.compare-list { list-style: none; margin: 0; padding: 8px; display: grid; gap: 4px; }
+.compare-list button { width: 100%; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; padding: 8px 10px; border: none; border-radius: 8px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.compare-list button:hover { background: var(--paper-lo); }
+.compare-list button.on { background: var(--paper-lo); box-shadow: inset 3px 0 0 var(--accent); }
+.compare-list small { color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.compare-list button.diff small { color: var(--accent); }
+.stage-wrap.compare-stage { display: block; overflow: auto; position: relative; }
+.compare-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 24px 24px 90px; align-items: start; }
+.compare-pair figure { margin: 0; display: grid; gap: 8px; min-width: 0; }
+.compare-pair figcaption { color: var(--mat-text, var(--muted)); font: 600 12px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.compare-pair canvas { width: 100%; height: auto; background: #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); border-radius: 2px; }
+.compare-missing { aspect-ratio: 3 / 4; display: grid; place-items: center; border: 2px dashed var(--line); border-radius: 6px; color: var(--muted); }
+.compare-text { line-height: 1.7; font-size: 14px; word-break: break-word; }
+.compare-text .same { color: var(--muted); }
+.compare-text .add, .note .add { background: rgba(46, 160, 67, 0.22); text-decoration: underline; text-decoration-color: rgb(46, 160, 67); border-radius: 3px; }
+.compare-text .del, .note .del { background: rgba(229, 72, 77, 0.2); text-decoration: line-through; border-radius: 3px; }
 .top-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
 .privacy { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); }
 .privacy svg { color: var(--good); }
@@ -333,6 +352,16 @@ input[type='color'] { width: 36px; height: 36px; padding: 2px; border: 1px solid
   .file-chip, .privacy-text, .btn-label, .modes-spacer { display: none; }
   .workspace { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr) auto; }
   .workspace.eraser { grid-template-columns: 1fr; grid-template-rows: minmax(360px, 1fr) auto; }
+  .workspace.compare { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr) auto; }
+  .compare-drops { grid-template-columns: 1fr; }
+  .compare-pair { padding: 12px 12px 80px; gap: 8px; }
+  .workspace.compare .rail { display: flex; align-items: center; }
+  .workspace.compare .compare-list { display: flex; padding: 8px; }
+  .workspace.compare .compare-list button { flex-direction: column; gap: 2px; min-width: 120px; }
+  .workspace.compare .rail > div { padding: 8px 12px !important; flex: none; }
+  .privacy { display: none; }
+  .view-switch > button { padding: 0 8px; font-size: 13px; }
+  .wordmark { font-size: 20px; }
   .rail { border-right: none; border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; }
   .rail > .eyebrow { display: none; }
   .thumbs { flex-direction: row; align-items: flex-end; padding: 18px 20px 12px; gap: 18px; }

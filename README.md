@@ -79,6 +79,11 @@ never leave your machine.
   marks is gone from the downloaded PDF, but text on that page can no longer be selected and its text boxes
   and stamps are flattened in. Pages you don't erase are untouched.
 
+**Compare** (separate tab)
+- Drop in two versions of a PDF. Every page pair is compared: changed areas are boxed in red on both sides,
+  and the text shows removed and added words. The page list says which pages differ, and which exist in
+  only one file. Pages are matched by position; scanned pages are compared as pictures only.
+
 **Image** (separate tab next to PDF)
 - Erase a mark or blemish from one of your own images: paint over it, press Erase, and it fills in
   from the surrounding pixels. Undo each fill, reset to the original, save as PNG or JPEG.

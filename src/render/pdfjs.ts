@@ -15,6 +15,22 @@ export function openForRender(id: string, bytes: Uint8Array) {
   if (!docs.has(id)) docs.set(id, pdfjs.getDocument({ data: bytes.slice() }))
 }
 
+/** Forget one document (e.g. a file opened only for comparing). */
+export function closeDoc(id: string) {
+  docs.get(id)?.destroy().catch(() => {})
+  docs.delete(id)
+}
+
+/** The words on a page, in reading order as pdf.js extracts them (empty for blank or scanned pages). */
+export async function pageWords(ref: PageRef): Promise<string[]> {
+  const page = await getPage(ref)
+  if (!page) return []
+  const tc = await page.getTextContent()
+  const words: string[] = []
+  for (const it of tc.items) if ('str' in it) for (const w of it.str.split(/\s+/)) if (w) words.push(w)
+  return words
+}
+
 export function closeAll() {
   for (const task of docs.values()) task.destroy().catch(() => {})
   docs.clear()

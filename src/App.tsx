@@ -13,6 +13,7 @@ import { CropOverlay } from './ui/CropOverlay'
 import { CropPanel } from './ui/CropPanel'
 import { EditPanel } from './ui/EditPanel'
 import { ImageEraser } from './ui/ImageEraser'
+import { CompareTool } from './ui/CompareTool'
 import { Icon, Logo } from './ui/icons'
 import { downloadBytes, imageToAsset, isImageFile, isPdfFile, readBytes } from './ui/files'
 import { PageCanvas } from './ui/PageCanvas'
@@ -36,7 +37,7 @@ const sameMargins = (a: Margins, b: Margins) => (['top', 'right', 'bottom', 'lef
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState)
-  const [view, setView] = useState<'pdf' | 'image'>('pdf')
+  const [view, setView] = useState<'pdf' | 'image' | 'compare'>('pdf')
   const [mode, setMode] = useState<Mode>('crop')
   const [tool, setTool] = useState<Tool>('select')
   const [scope, setScopeRaw] = useState<Scope>({ mode: 'current', range: '' })
@@ -402,7 +403,7 @@ export default function App() {
   // ---- keyboard + drag/drop
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (view === 'image') return // the image tool has its own shortcuts
+      if (view !== 'pdf') return // the image and compare tools have their own shortcuts
       const typing = e.target instanceof HTMLElement && e.target.matches('input, textarea, select, [contenteditable]')
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); dispatch({ type: e.shiftKey ? 'redo' : 'undo' }) }
@@ -420,7 +421,7 @@ export default function App() {
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault()
-    if (view === 'image') return // the image tool handles its own drops
+    if (view !== 'pdf') return // the image and compare tools handle their own drops
     const files = [...e.dataTransfer.files]
     if (files.some(isPdfFile)) addFiles(files, pages.length === 0)
     else if (files.length && isImageFile(files[0]) && page) addImageFile(files[0])
@@ -444,6 +445,7 @@ export default function App() {
           <div className="seg small light view-switch" role="tablist" aria-label="Tool">
             <button role="tab" aria-selected={view === 'pdf'} className={view === 'pdf' ? 'on' : ''} onClick={() => setView('pdf')}>PDF</button>
             <button role="tab" aria-selected={view === 'image'} className={view === 'image' ? 'on' : ''} onClick={() => setView('image')}>Image eraser</button>
+            <button role="tab" aria-selected={view === 'compare'} className={view === 'compare' ? 'on' : ''} onClick={() => setView('compare')}>Compare</button>
           </div>
           {view === 'pdf' && page && (
             <button className="file-chip" onClick={() => openInput.current?.click()} disabled={busy} title="Open a different PDF">
@@ -462,7 +464,7 @@ export default function App() {
           </div>
         ) : <span className="modes-spacer" />}
         <div className="top-actions">
-          {view === 'image' ? (
+          {view !== 'pdf' ? (
             <span className="privacy"><Icon name="lock" size={16} /><span className="privacy-text">Runs in your browser · nothing uploaded</span></span>
           ) : page ? (
             <>
@@ -484,6 +486,8 @@ export default function App() {
 
       {view === 'image' ? (
         <ImageEraser onNotify={notify} />
+      ) : view === 'compare' ? (
+        <CompareTool onNotify={notify} />
       ) : !page ? (
         <main className="empty mat">
           <div className="hero">
