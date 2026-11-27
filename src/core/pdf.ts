@@ -147,7 +147,7 @@ export async function buildPdf(
   const copied = new Map<string, Map<number, PDFPage>>()
   const docs = new Map<string, PDFDocument>()
   const needed = new Map<string, Set<number>>()
-  for (const p of pages) if (p.src && !p.base && !rasterized?.[p.id]) (needed.get(p.src) ?? needed.set(p.src, new Set()).get(p.src)!).add(p.srcIndex)
+  for (const p of pages) if (p.src && (!p.base || p.base.rect) && !rasterized?.[p.id]) (needed.get(p.src) ?? needed.set(p.src, new Set()).get(p.src)!).add(p.srcIndex)
   for (const [src, idx] of needed) {
     const bytes = sources[src]
     if (!bytes) throw new Error(`Missing source document "${src}"`)
@@ -169,7 +169,7 @@ export async function buildPdf(
       continue
     }
     let page: PDFPage
-    if (ref.base) {
+    if (ref.base && !ref.base.rect) {
       // Erased page: only the image goes in; none of the source page's content is copied.
       const m = ref.media
       page = out.addPage([m.width, m.height])
@@ -187,6 +187,11 @@ export async function buildPdf(
       out.addPage(page)
     } else {
       page = out.addPage([ref.media.width, ref.media.height])
+    }
+    if (ref.base?.rect) {
+      // Patched page: the original stays as it is (vector, selectable text) and the changed pixels go on top.
+      const r = ref.base.rect
+      page.drawImage(await image(ctx, ref.base.asset), { x: r.x, y: r.y, width: r.width, height: r.height })
     }
     page.setRotation(degrees(ref.rotation))
     const c = ref.crop

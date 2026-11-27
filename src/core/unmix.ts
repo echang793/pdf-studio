@@ -38,7 +38,8 @@ function pct(sorted: ArrayLike<number>, q: number): number {
 }
 
 /** Learn the page colour, the watermark's colour and a strength from the marked area and its surroundings. Null if there is no coloured watermark to learn from. */
-export function estimateTint(data: Uint8ClampedArray, mask: Uint8Array, w: number, h: number, coverage: 'color' | 'paint' = 'color'): Tint | null {
+/** `picked`: the watermark-over-page colour chosen by hand (eyedropper); skips guessing it. */
+export function estimateTint(data: Uint8ClampedArray, mask: Uint8Array, w: number, h: number, coverage: 'color' | 'paint' = 'color', picked?: [number, number, number] | null): Tint | null {
   let x0 = w, y0 = h, x1 = -1, y1 = -1
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (mask[y * w + x]) {
     if (x < x0) x0 = x
@@ -74,7 +75,12 @@ export function estimateTint(data: Uint8ClampedArray, mask: Uint8Array, w: numbe
   // By paint (grey marks): the commonest bright colour in the painted area that isn't the page itself.
   const bright = (i: number) => luma(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]) >= 0.6 * pl
   let mark: [number, number, number]
-  if (coverage === 'color') {
+  if (picked) {
+    // A pick on blank page (or on near-black text) can't describe the watermark.
+    if (Math.max(Math.abs(picked[0] - paper[0]), Math.abs(picked[1] - paper[1]), Math.abs(picked[2] - paper[2])) < 8) return null
+    if (luma(...picked) < 0.3 * pl) return null
+    mark = [picked[0], picked[1], picked[2]]
+  } else if (coverage === 'color') {
     const shift = (r: number, g: number, b: number) => {
       const c = chroma(r, g, b)
       const k = Math.min(1, luma(r, g, b) / pl) // paper's own tint dims with the pixel

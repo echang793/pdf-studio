@@ -14,8 +14,13 @@ export interface FillResult {
 }
 export type FillMode = 'quick' | 'ai' | 'tint'
 /** Settings for the tint remover: `strength` null = work it out from the image. */
-export interface TintSettings { strength: number | null; coverage: 'color' | 'paint' }
-export const DEFAULT_TINT: TintSettings = { strength: null, coverage: 'color' }
+export interface TintSettings {
+  strength: number | null
+  coverage: 'color' | 'paint'
+  /** Watermark-over-page colour picked with the eyedropper; null = work it out. */
+  mark: [number, number, number] | null
+}
+export const DEFAULT_TINT: TintSettings = { strength: null, coverage: 'color', mark: null }
 
 /** Mask from the painted marks (alpha > 0), dilated a little to swallow the brush's soft edge. Null if nothing is painted. */
 export function readMask(marks: ImageData): { mask: Uint8Array; bounds: Rect } | null {
@@ -54,7 +59,7 @@ export function tintFill(ctx: CanvasRenderingContext2D, w: number, h: number, ma
   const before = new ImageData(Uint8ClampedArray.from(region.data), rw, rh)
   const sub = new Uint8Array(rw * rh)
   for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) sub[y * rw + x] = mask[(y + ry) * w + (x + rx)]
-  const found = estimateTint(region.data, sub, rw, rh, s.coverage)
+  const found = estimateTint(region.data, sub, rw, rh, s.coverage, s.mark)
   if (!found) {
     const hint = s.coverage === 'color'
       ? 'Could not find a coloured watermark in the painted area. For a grey one, switch "Find the watermark by" to "My painting" and paint right over it.'

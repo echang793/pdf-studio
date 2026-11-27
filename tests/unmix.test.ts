@@ -133,3 +133,21 @@ describe('grey watermark with painted coverage', () => {
     }
   })
 })
+
+describe('picked watermark colour', () => {
+  it('uses a colour picked by hand instead of guessing it, and still restores the page', () => {
+    const { clean, marked, inStripe } = scene()
+    const over: [number, number, number] = [(1 - A) * PAPER + A * WM[0], (1 - A) * PAPER + A * WM[1], (1 - A) * PAPER + A * WM[2]]
+    const e = estimateTint(marked, inStripe, W, H, 'color', over)!
+    expect(e.mark).toEqual(over)
+    const out = Uint8ClampedArray.from(marked)
+    removeTint(out, inStripe, W, H, { ...e, coverage: 'color' })
+    let worst = 0
+    for (let i = 0; i < W * H; i++) if (inStripe[i]) for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(out[i * 4 + k] - clean[i * 4 + k]))
+    expect(worst).toBeLessThanOrEqual(12)
+  })
+  it('rejects a picked colour that is just the page', () => {
+    const { marked, inStripe } = scene()
+    expect(estimateTint(marked, inStripe, W, H, 'color', [PAPER, PAPER, PAPER])).toBeNull()
+  })
+})

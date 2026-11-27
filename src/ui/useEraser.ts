@@ -23,6 +23,7 @@ export function useEraser({ onNotify, keys = true, onFilled }: Options) {
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<FillMode>('tint')
   const [tint, setTint] = useState<TintSettings>(DEFAULT_TINT)
+  const [picking, setPicking] = useState(false) // next click samples the watermark colour instead of painting
   const [ai, setAi] = useState<{ label: string; done: number; total: number } | null>(null)
   const base = useRef<HTMLCanvasElement>(null)
   const overlay = useRef<HTMLCanvasElement>(null)
@@ -68,6 +69,19 @@ export function useEraser({ onNotify, keys = true, onFilled }: Options) {
   }
   const down = (e: PointerEvent) => {
     if (!source || busy) return
+    if (picking) {
+      // Average a small square so a single anti-aliased pixel can't skew the pick.
+      const p = pos(e)
+      const r = Math.max(1, Math.round(source.w / 600))
+      const x = Math.max(0, Math.round(p.x) - r), y = Math.max(0, Math.round(p.y) - r)
+      const d = base.current!.getContext('2d')!.getImageData(x, y, 2 * r + 1, 2 * r + 1).data
+      const sum = [0, 0, 0]
+      for (let i = 0; i < d.length; i += 4) { sum[0] += d[i]; sum[1] += d[i + 1]; sum[2] += d[i + 2] }
+      const n = d.length / 4
+      setTint((t) => ({ ...t, mark: [sum[0] / n, sum[1] / n, sum[2] / n] }))
+      setPicking(false)
+      return
+    }
     e.currentTarget.setPointerCapture(e.pointerId)
     const p = pos(e)
     last.current = p
@@ -86,6 +100,23 @@ export function useEraser({ onNotify, keys = true, onFilled }: Options) {
     const o = overlay.current
     o?.getContext('2d')!.clearRect(0, 0, o.width, o.height)
     setDirty(false)
+  }, [])
+
+  /** Replace the painted marks with a 0/1 mask (any size; stretched to the canvas), e.g. from automatic detection. */
+  const setMarks = useCallback((mask: Uint8Array, mw: number, mh: number) => {
+    const o = overlay.current
+    if (!o || !o.width) return
+    const tmp = document.createElement('canvas')
+    tmp.width = mw
+    tmp.height = mh
+    const img = tmp.getContext('2d')!.createImageData(mw, mh)
+    for (let i = 0; i < mask.length; i++) if (mask[i]) { img.data[i * 4] = 229; img.data[i * 4 + 1] = 72; img.data[i * 4 + 2] = 77; img.data[i * 4 + 3] = 255 }
+    tmp.getContext('2d')!.putImageData(img, 0, 0)
+    const ctx = o.getContext('2d')!
+    ctx.clearRect(0, 0, o.width, o.height)
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(tmp, 0, 0, o.width, o.height)
+    setDirty(mask.some((v) => v === 1))
   }, [])
 
   /** The painted marks as a 0/1 mask at the canvas's own size (undilated), for applying to other pages. */
@@ -152,6 +183,6 @@ export function useEraser({ onNotify, keys = true, onFilled }: Options) {
     return () => window.removeEventListener('keydown', onKey)
   }, [keys, undo, clearMarks])
 
-  return { source, base, overlay, brush, setBrush, dirty, edits, busy, setBusy, mode, setMode, tint, setTint, ai, setAi, load, down, move, up, clearMarks, marksMask, erase, undo, reset }
+  return { source, base, overlay, brush, setBrush, dirty, edits, busy, setBusy, mode, setMode, tint, setTint, picking, setPicking, ai, setAi, load, down, move, up, clearMarks, setMarks, marksMask, erase, undo, reset }
 }
 export type Eraser = ReturnType<typeof useEraser>

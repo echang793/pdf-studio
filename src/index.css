@@ -170,6 +170,9 @@ input[type='color'] { width: 36px; height: 36px; padding: 2px; border: 1px solid
 .zoom button:hover { background: var(--paper-lo); }
 .zoom .pct { min-width: 60px; width: auto; font-family: var(--mono); font-size: 13px; }
 .zoom .divider { width: 1px; height: 20px; background: var(--line); margin: 0 6px; }
+.zoom button.compare { width: auto; padding: 0 12px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.zoom button.compare[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.compare-tag { position: absolute; top: 8px; left: 8px; padding: 3px 8px; border-radius: 6px; background: rgba(20, 20, 20, 0.75); color: #fff; font: 600 12px var(--mono); pointer-events: none; }
 .zoom .pageno { padding-right: 12px; white-space: nowrap; font-family: var(--mono); font-size: 13px; color: var(--muted); }
 
 /* ---- thumbnails ---- */

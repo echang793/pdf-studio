@@ -77,7 +77,10 @@ export function ImageEraser({ onNotify }: { onNotify: (text: string, error?: boo
   const { dirty, edits, busy, ai, mode } = e
   return (
     <div className="workspace eraser" onDragOver={(ev) => { ev.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
-      <EraserStage eraser={e} footer={<span className="pageno">{img.w} × {img.h} px</span>} />
+      <EraserStage
+        eraser={e}
+        original={{ key: `${img.name}|${img.w}x${img.h}|${img.bitmap.width}`, get: async () => { const c = document.createElement('canvas'); c.width = img.w; c.height = img.h; c.getContext('2d')!.drawImage(img.bitmap, 0, 0, img.w, img.h); return c } }}
+        footer={<span className="pageno">{img.w} × {img.h} px</span>} />
       <aside className="side">
         <div className="panel">
           <div className="panel-head">

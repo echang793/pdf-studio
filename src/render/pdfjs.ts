@@ -72,7 +72,7 @@ function mediaViewport(page: PDFPageProxy, ref: PageRef, scale: number): PageVie
 export interface RenderJob { promise: Promise<void>; cancel: () => void }
 
 /** Draw an upright-unrotated page image into a display-rotated canvas of w x h px. */
-function drawBase(ctx: CanvasRenderingContext2D, bmp: ImageBitmap, rotation: number, w: number, h: number) {
+function drawBase(ctx: CanvasRenderingContext2D, bmp: CanvasImageSource, rotation: number, w: number, h: number) {
   const odd = rotation % 180 !== 0
   const iw = odd ? h : w
   const ih = odd ? w : h
@@ -91,7 +91,8 @@ function renderCore(ref: PageRef, canvas: HTMLCanvasElement, pixelScale: number)
     const size = displaySize(ref.media, ref.rotation)
     const w = Math.max(1, Math.floor(size.width * pixelScale))
     const h = Math.max(1, Math.floor(size.height * pixelScale))
-    const bmp = ref.base ? await baseBitmap(ref.base.asset) : null
+    const bmp = ref.base && !ref.base.rect ? await baseBitmap(ref.base.asset) : null
+    const overlay = ref.base?.rect ? await baseBitmap(ref.base.asset) : null
     const page = bmp ? null : await getPage(ref)
     if (cancelled) return
     // Render to an offscreen canvas first so a cancelled render never blanks the visible one.
@@ -112,6 +113,18 @@ function renderCore(ref: PageRef, canvas: HTMLCanvasElement, pixelScale: number)
         if (e instanceof pdfjs.RenderingCancelledException) return
         throw e
       }
+    }
+    if (overlay && ref.base?.rect) {
+      // Patch: place it on an unrotated page-sized layer, then turn that layer like the page.
+      const odd = ref.rotation % 180 !== 0
+      const lw = odd ? h : w, lh = odd ? w : h
+      const layer = document.createElement('canvas')
+      layer.width = lw
+      layer.height = lh
+      const m = ref.media, r = ref.base.rect
+      const sx = lw / m.width, sy = lh / m.height
+      layer.getContext('2d')!.drawImage(overlay, (r.x - m.x) * sx, (m.y + m.height - r.y - r.height) * sy, r.width * sx, r.height * sy)
+      drawBase(ctx, layer, ref.rotation, w, h)
     }
     if (cancelled) return
     canvas.width = w

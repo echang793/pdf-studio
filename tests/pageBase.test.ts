@@ -79,6 +79,11 @@ describe('setBases action', () => {
     expect(s.past.length).toBe(before.past.length + 1)
     expect(s.doc.pages.map((p) => p.base?.asset)).toEqual(['a', 'b'])
   })
+  it('a patch (asset + rect) keeps the page and its annotations', () => {
+    const s = reducer(start(), { type: 'setBases', items: { p1: { asset: 'pt', rect: { x: 1, y: 2, width: 3, height: 4 } } } })
+    expect(s.doc.pages[0].base).toEqual({ asset: 'pt', rect: { x: 1, y: 2, width: 3, height: 4 } })
+    expect(s.doc.pages[0].annots).toHaveLength(1)
+  })
   it('ignores unknown page ids', () => {
     const before = start()
     expect(reducer(before, { type: 'setBases', items: { nope: 'a' } })).toBe(before)
@@ -103,5 +108,20 @@ describe('resampleMask', () => {
     const out = resampleMask(m, 3, 3, 3, 3)
     expect([...out]).toEqual([...m])
     expect(out).not.toBe(m)
+  })
+})
+
+describe('replaceSource action', () => {
+  const page = (id: string, src: string | null): PageRef => ({ id, src, srcIndex: 0, rotation: 0, media: { x: 0, y: 0, width: 10, height: 10 }, crop: { x: 0, y: 0, width: 10, height: 10 }, annots: [] })
+  it('points every page of one source at a cleaned copy, as one undo step, leaving other sources alone', () => {
+    const s0 = reducer(initialState, { type: 'addPages', pages: [page('p1', 'a'), page('p2', 'b'), page('p3', 'a'), page('p4', null)] })
+    const s = reducer(s0, { type: 'replaceSource', from: 'a', to: 'a2' })
+    expect(s.doc.pages.map((p) => p.src)).toEqual(['a2', 'b', 'a2', null])
+    expect(s.past.length).toBe(s0.past.length + 1)
+    expect(reducer(s, { type: 'undo' }).doc.pages.map((p) => p.src)).toEqual(['a', 'b', 'a', null])
+  })
+  it('is a no-op for a source no page uses', () => {
+    const s0 = reducer(initialState, { type: 'addPages', pages: [page('p1', 'a')] })
+    expect(reducer(s0, { type: 'replaceSource', from: 'zz', to: 'q' })).toBe(s0)
   })
 })

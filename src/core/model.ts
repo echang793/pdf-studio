@@ -35,7 +35,12 @@ export interface PageRef {
   /** An image (asset key, PNG of the whole unrotated MediaBox) that stands in for the page's original
    *  content: set when part of the page was erased. The source page is then not copied into the output,
    *  so what was erased is really gone. */
-  base?: { asset: string }
+  base?: {
+    asset: string
+    /** Patch mode: the image covers only this area (PDF user space) and is drawn OVER the original page, which is
+     *  kept (vector, selectable text). Transparent pixels show the original. What it covers is hidden, not removed. */
+    rect?: Box
+  }
 }
 
 export interface Asset { mime: 'image/png' | 'image/jpeg'; bytes: Uint8Array }

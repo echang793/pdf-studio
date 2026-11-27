@@ -1,12 +1,47 @@
-import { useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { FILLING } from '../render/fill'
 import type { Eraser } from './useEraser'
 import { useFitScale } from './useFitScale'
 
-/** The paintable canvas pair, fitted to the available space. */
-export function EraserStage({ eraser, footer }: { eraser: Eraser; footer?: ReactNode }) {
+/** How to show the untouched original for before/after: `key` changes when the original does. */
+export interface Original { key: string; get: () => Promise<HTMLCanvasElement> }
+
+/** The paintable canvas pair, fitted to the available space. Hold "Compare" (or the C key) to see the original. */
+export function EraserStage({ eraser, footer, original }: { eraser: Eraser; footer?: ReactNode; original?: Original }) {
   const stage = useRef<HTMLDivElement>(null)
   const { source } = eraser
+  const [peek, setPeek] = useState(false)
+  const [url, setUrl] = useState<{ key: string; url: string } | null>(null)
+  const loading = useRef<string | null>(null)
+  const want = original?.key ?? null
+
+  const show = async () => {
+    if (!original) return
+    setPeek(true)
+    if (url?.key === original.key || loading.current === original.key) return
+    loading.current = original.key
+    try {
+      const c = await original.get()
+      const blob = await new Promise<Blob | null>((r) => c.toBlob(r, 'image/png'))
+      if (blob && loading.current === original.key) setUrl((old) => { if (old) URL.revokeObjectURL(old.url); return { key: original.key, url: URL.createObjectURL(blob) } })
+    } finally {
+      loading.current = null
+    }
+  }
+  const hide = () => setPeek(false)
+  const showRef = useRef(show)
+  useEffect(() => { showRef.current = show })
+  useEffect(() => {
+    const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+    const down = (e: KeyboardEvent) => { if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && !e.repeat && !typing(e.target)) showRef.current() }
+    const up = (e: KeyboardEvent) => { if (e.key === 'c' || e.key === 'C') setPeek(false) }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    window.addEventListener('blur', hide)
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', hide) }
+  }, [])
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url.url) }, [url])
+  const showing = peek && url && url.key === want
   const scale = useFitScale(stage, source ? { width: source.w, height: source.h } : { width: 800, height: 600 })
   return (
     <div className="stage-wrap mat">
@@ -21,16 +56,30 @@ export function EraserStage({ eraser, footer }: { eraser: Eraser; footer?: React
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.55, touchAction: 'none' }}
             onPointerDown={eraser.down} onPointerMove={eraser.move} onPointerUp={eraser.up} onPointerCancel={eraser.up}
           />
+          {showing && (
+            <>
+              <img src={url.url} alt="Original, before erasing" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
+              <span className="compare-tag">Original</span>
+            </>
+          )}
         </div>
       </main>
-      <div className="zoom">{footer}</div>
+      <div className="zoom">
+        {original && (
+          <button
+            className="compare" title="Hold to see the original (or hold C)" aria-pressed={peek}
+            onPointerDown={(e) => { e.preventDefault(); show() }} onPointerUp={hide} onPointerLeave={hide} onPointerCancel={hide}
+          >{peek ? (showing ? 'Original' : 'Loading…') : 'Hold to compare'}</button>
+        )}
+        {footer}
+      </div>
     </div>
   )
 }
 
 /** Brush size, fill method and the model-download progress. */
 export function EraseSettings({ eraser, maxBrush }: { eraser: Eraser; maxBrush: number }) {
-  const { brush, setBrush, mode, setMode, busy, ai, tint, setTint } = eraser
+  const { brush, setBrush, mode, setMode, busy, ai, tint, setTint, picking, setPicking } = eraser
   return (
     <>
       <label className="field-label">
@@ -67,6 +116,20 @@ export function EraseSettings({ eraser, maxBrush }: { eraser: Eraser; maxBrush: 
               <input type="range" min={5} max={85} value={Math.round((tint.strength ?? 0.35) * 100)} disabled={busy}
                 onChange={(ev) => setTint({ ...tint, strength: Number(ev.target.value) / 100 })} style={{ accentColor: 'var(--accent)' }} />
             </label>
+            <div className="field-label">
+              Watermark colour
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span
+                  aria-label={tint.mark ? 'Picked colour' : 'Found automatically'}
+                  style={{ width: 28, height: 28, borderRadius: 6, flex: 'none', boxShadow: '0 0 0 1px var(--line)', background: tint.mark ? `rgb(${tint.mark.map(Math.round).join(',')})` : 'repeating-linear-gradient(45deg, var(--paper-lo) 0 4px, transparent 4px 8px)' }}
+                />
+                <button className={`btn ${picking ? 'primary' : ''}`} onClick={() => setPicking(!picking)} disabled={busy}>
+                  {picking ? 'Click the watermark…' : tint.mark ? 'Pick again' : 'Pick from page'}
+                </button>
+                {tint.mark && <button className="btn ghost" onClick={() => setTint({ ...tint, mark: null })} disabled={busy}>Auto</button>}
+              </div>
+              <span className="hint">{tint.mark ? 'Using the colour you picked.' : 'Found automatically. If it gets it wrong, pick a spot of watermark over blank page.'}</span>
+            </div>
             {tint.strength != null && <button className="btn ghost" onClick={() => setTint({ ...tint, strength: null })} disabled={busy}>Back to auto</button>}
           </>
         )}

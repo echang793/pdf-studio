@@ -40,6 +40,18 @@ never leave your machine.
 - Remove a watermark, stamp or blemish from pages of a PDF: paint over it and press Erase. Same Quick /
   AI fill as the Image tab. Pick This / All / Odd / Even / a range (or thumbnails) to erase the same marks
   on many pages at once; that's one undo step. Page rotation is handled.
+- **Remove built-in watermark**: many watermarks (Acrobat's, Word's, most PDF tools') are stored as their own object.
+  When Erase finds one it offers to remove just that object: the page stays vector and otherwise untouched (text
+  selectable, nothing rasterized). Recognised: `/Artifact /Watermark` marked content, layers named "Watermark",
+  Acrobat watermark XObjects, and Watermark annotations. Watermarks drawn as plain text or shapes need the
+  pixel tools below.
+- **Find the watermark for me** marks what repeats in the same place and colour across the pages (light or
+  coloured, not dark headers or text), or coloured pixels on a one-page file. Check the red area, then remove.
+- **Save erased pages as** a patch over the original (default: only changed pixels are stored, as a transparent
+  image over the untouched page, so text stays selectable; what it covers is hidden, not deleted) or the whole
+  page as a picture (what was under the marks is gone).
+- **Hold to compare** (or hold C) shows the original page; in Remove tint, **Pick from page** sets the
+  watermark colour by clicking it when the automatic guess is off.
 - **Remove tint** (default) is for a see-through watermark laid over the page, the common kind. It doesn't paint
   over anything: it works out the watermark's colour and opacity from the page and undoes the blend, so blank
   page comes back as blank page and text under the watermark comes back as text, pixel-accurate. Pixels the

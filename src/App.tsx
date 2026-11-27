@@ -5,6 +5,7 @@ import { uid, type Annot, type AnnotPatch, type Asset, type PageRef } from './co
 import { buildPdf, loadSource, SourceError, type Rasterized } from './core/pdf'
 import { resolveScope, type Scope } from './core/scope'
 import { chunk, zipFiles } from './core/split'
+import { stripWatermarkObjects } from './core/watermarkObjects'
 import { autoTrimMargins, closeAll, openForRender, rasterizePage, reencodeJpeg, registerBase, renderPageToImage } from './render/pdfjs'
 import { initialState, reducer } from './state/store'
 import { AnnotLayer } from './ui/AnnotLayer'
@@ -15,7 +16,7 @@ import { ImageEraser } from './ui/ImageEraser'
 import { Icon, Logo } from './ui/icons'
 import { downloadBytes, imageToAsset, isImageFile, isPdfFile, readBytes } from './ui/files'
 import { PageCanvas } from './ui/PageCanvas'
-import { PageEraser } from './ui/PageEraser'
+import { PageEraser, type Erased } from './ui/PageEraser'
 import { PagesPanel } from './ui/PagesPanel'
 import { SignatureModal } from './ui/SignatureModal'
 import { ThumbRail } from './ui/ThumbRail'
@@ -254,18 +255,56 @@ export default function App() {
   })
 
   // ---- erase: pages whose content was replaced by an image with the marks filled in
-  const commitErased = (items: Record<string, Uint8Array>) => {
+  // ---- built-in (object) watermarks: found by scanning the open files whenever Erase is shown
+  const srcKey = [...new Set(pages.filter((p) => !p.base).map((p) => p.src).filter((s): s is string => !!s))].join('|')
+  const [builtIn, setBuiltIn] = useState<{ pages: number; key: string } | null>(null)
+  useEffect(() => {
+    if (mode !== 'erase' || !srcKey) return
+    let stale = false
+    ;(async () => {
+      let n = 0
+      for (const id of srcKey.split('|')) {
+        const bytes = sources.current[id]
+        if (!bytes) continue
+        const r = await stripWatermarkObjects(bytes, { dryRun: true }).catch(() => null)
+        if (r) n += r.pages.length
+      }
+      if (!stale) setBuiltIn(n ? { pages: n, key: srcKey } : null)
+    })()
+    return () => { stale = true }
+  }, [mode, srcKey])
+
+  const removeBuiltIn = () => run(async () => {
+    let n = 0
+    for (const id of srcKey.split('|')) {
+      const bytes = sources.current[id]
+      if (!bytes) continue
+      const r = await stripWatermarkObjects(bytes)
+      if (!r.found) continue
+      const next = uid('src')
+      sources.current[next] = r.bytes
+      openForRender(next, r.bytes)
+      dispatch({ type: 'replaceSource', from: id, to: next })
+      n += r.pages.length
+    }
+    setBuiltIn(null)
+    notify(n ? `Removed the built-in watermark from ${n} page${n === 1 ? '' : 's'}; nothing else on them changed` : 'No built-in watermark found', !n)
+  })
+
+  const commitErased = (items: Record<string, Erased>) => {
     const keys: Record<string, string> = {}
+    const bases: Record<string, string | { asset: string; rect: Box }> = {}
     const added: Record<string, Asset> = {}
-    for (const [id, bytes] of Object.entries(items)) {
+    for (const [id, { bytes, rect }] of Object.entries(items)) {
       const key = uid('erased')
+      bases[id] = rect ? { asset: key, rect } : key
       const asset: Asset = { mime: 'image/png', bytes }
       registerBase(key, asset)
       keys[id] = key
       added[key] = asset
     }
     setAssets((a) => ({ ...a, ...added }))
-    dispatch({ type: 'setBases', items: keys })
+    dispatch({ type: 'setBases', items: bases })
     return keys
   }
 
@@ -423,6 +462,7 @@ export default function App() {
               scope={scope} onScope={setScope} scopeIds={resolved.ids} scopeError={resolved.error} selectedCount={picked.size}
               canUndo={state.past.length > 0} onUndo={() => dispatch({ type: 'undo' })}
               onCommit={commitErased} onNotify={notify}
+              builtIn={builtIn && builtIn.key === srcKey ? builtIn : null} onRemoveBuiltIn={removeBuiltIn}
             />
           ) : (
             <>

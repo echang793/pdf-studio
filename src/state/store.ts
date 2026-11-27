@@ -1,4 +1,4 @@
-import { clampToMedia, marginsToBox, normRotation, type Margins, type Size } from '../core/geometry'
+import { clampToMedia, marginsToBox, normRotation, type Box, type Margins, type Size } from '../core/geometry'
 import { uid, type Annot, type AnnotPatch, type ImageAnnot, type PageRef, type WatermarkAnnot } from '../core/model'
 
 type WatermarkSpec = Omit<WatermarkAnnot, 'id' | 'rect' | 'rotate'>
@@ -25,7 +25,10 @@ export type Action =
   | { type: 'insertBlank'; index: number; size: Size }
   | { type: 'addImagePage'; index: number; size: Size; annot: Omit<ImageAnnot, 'id' | 'rect' | 'rotate'> }
   | { type: 'setWatermark'; ids: string[]; spec: WatermarkSpec | null }
-  | { type: 'setBases'; items: Record<string, string> }
+  /** Erased pages: an asset key (whole page replaced) or { asset, rect } (a patch drawn over the original). */
+  | { type: 'setBases'; items: Record<string, string | { asset: string; rect: Box }> }
+  /** Point every page of source `from` at `to` (a rewritten copy of the same pages, e.g. with watermark objects removed). */
+  | { type: 'replaceSource'; from: string; to: string }
   | { type: 'addAnnot'; pageId: string; annot: Annot }
   | { type: 'updateAnnot'; pageId: string; id: string; patch: AnnotPatch }
   | { type: 'removeAnnot'; pageId: string; id: string }
@@ -98,7 +101,15 @@ function docReducer(doc: Doc, a: Action): Doc {
       // Erased pages: the image already has the page's annotations painted in, so they're cleared.
       const ids = Object.keys(a.items).filter((id) => doc.pages.some((p) => p.id === id))
       if (ids.length === 0) return doc
-      return mapPages(doc, ids, (p) => ({ ...p, base: { asset: a.items[p.id] }, annots: [] }))
+      return mapPages(doc, ids, (p) => {
+        const it = a.items[p.id]
+        return typeof it === 'string' ? { ...p, base: { asset: it }, annots: [] } : { ...p, base: { asset: it.asset, rect: it.rect } }
+      })
+    }
+    case 'replaceSource': {
+      const ids = doc.pages.filter((p) => p.src === a.from).map((p) => p.id)
+      if (ids.length === 0) return doc
+      return mapPages(doc, ids, (p) => ({ ...p, src: a.to }))
     }
     case 'addAnnot':
       return mapPages(doc, [a.pageId], (p) => ({ ...p, annots: [...p.annots, a.annot] }))
