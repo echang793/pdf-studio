@@ -28,6 +28,9 @@ import { HeaderFooterPanel } from './ui/HeaderFooterPanel'
 import { DocInfoPanel } from './ui/DocInfoPanel'
 import { FormPanel, type FormGroup } from './ui/FormPanel'
 import { fillForm, listFields } from './core/forms'
+import { isEncrypted, PasswordError, protectPdf, unlockPdf, type ProtectOptions } from './core/passwords'
+import { qpdfRun } from './render/qpdf'
+import { PasswordModal } from './ui/PasswordModal'
 import { readMetadata, type DocMeta, type MetaRead } from './core/metadata'
 import type { HeaderFooterSpec } from './core/headerFooter'
 
@@ -55,6 +58,8 @@ export default function App() {
   const [meta, setMeta] = useState<DocMeta>({ title: '', author: '', subject: '', keywords: '' })
   const [metaRead, setMetaRead] = useState<MetaRead | null>(null)
   const [strip, setStrip] = useState(true)
+  const [protect, setProtect] = useState<ProtectOptions>({ user: '', restrict: false })
+  const [pwAsk, setPwAsk] = useState<{ file: string; error?: string; resolve: (pw: string | null) => void } | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [name, setName] = useState('document')
   const sources = useRef<Record<string, Uint8Array>>({})
@@ -120,6 +125,18 @@ export default function App() {
   }, [assets])
   useEffect(() => () => Object.values(assetUrls).forEach((u) => URL.revokeObjectURL(u)), [assetUrls])
 
+  /** An encrypted PDF: try without a password (restrictions only), then ask until it opens or the user cancels. */
+  const openProtected = useCallback(async (file: string, bytes: Uint8Array): Promise<Uint8Array | null> => {
+    try { return await unlockPdf(bytes, '', qpdfRun) } catch (e) { if (!(e instanceof PasswordError)) throw e }
+    let error: string | undefined
+    for (;;) {
+      const pw = await new Promise<string | null>((resolve) => setPwAsk({ file, error, resolve }))
+      setPwAsk(null)
+      if (pw === null) return null
+      try { return await unlockPdf(bytes, pw, qpdfRun) } catch (e) { if (!(e instanceof PasswordError)) throw e; error = e.message }
+    }
+  }, [])
+
   const addFiles = useCallback(async (files: File[], replace: boolean) => {
     const pdfs = files.filter(isPdfFile)
     if (pdfs.length === 0) return notify('Choose a PDF file', true)
@@ -127,7 +144,12 @@ export default function App() {
     try {
       const loaded: PageRef[] = []
       for (const f of pdfs) {
-        const bytes = await readBytes(f)
+        let bytes = await readBytes(f)
+        if (await isEncrypted(bytes)) {
+          const open = await openProtected(f.name, bytes)
+          if (!open) { notify(`Skipped ${f.name}: no password`, true); continue }
+          bytes = open
+        }
         const id = uid('src')
         const src = await loadSource(id, bytes)
         sources.current[id] = bytes
@@ -148,6 +170,7 @@ export default function App() {
         const first = loaded[0]?.src ? sources.current[loaded[0].src] : null
         const m = first ? await readMetadata(first).catch(() => null) : null
         setMetaRead(m)
+        setProtect({ user: '', restrict: false }) // a download password belongs to the document it was set for
         setMeta({ title: m?.title ?? '', author: m?.author ?? '', subject: m?.subject ?? '', keywords: m?.keywords ?? '' })
       }
       dispatch({ type: 'addPages', pages: loaded })
@@ -157,9 +180,12 @@ export default function App() {
     } finally {
       setBusy(false)
     }
-  }, [notify])
+  }, [notify, openProtected])
 
-  const build = useCallback(async (list: PageRef[], rasterized?: Record<string, Rasterized>) => buildPdf(list, sources.current, assets, rasterized, { meta, strip }), [assets, meta, strip])
+  const build = useCallback(async (list: PageRef[], rasterized?: Record<string, Rasterized>) => {
+    const bytes = await buildPdf(list, sources.current, assets, rasterized, { meta, strip })
+    return protect.user || protect.restrict ? protectPdf(bytes, protect, qpdfRun) : bytes
+  }, [assets, meta, strip, protect])
 
   const run = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true)
@@ -519,6 +545,7 @@ export default function App() {
               canUndo={state.past.length > 0} onUndo={() => dispatch({ type: 'undo' })}
               onCommit={commitErased} onNotify={notify}
               builtIn={builtIn && builtIn.key === srcKey ? builtIn : null} onRemoveBuiltIn={removeBuiltIn}
+              onOcr={(items) => dispatch({ type: 'setOcr', items })}
             />
           ) : (
             <>
@@ -575,7 +602,7 @@ export default function App() {
                   redactCount={redactCount} onExportRedacted={exportRedacted}
                 />
               )}
-              {mode === 'pages' && <DocInfoPanel meta={meta} onMeta={setMeta} strip={strip} onStrip={setStrip} original={metaRead} />}
+              {mode === 'pages' && <DocInfoPanel meta={meta} onMeta={setMeta} strip={strip} onStrip={setStrip} original={metaRead} protect={protect} onProtect={setProtect} />}
               {mode === 'watermark' && (
                 <WatermarkPanel
                   spec={wmSpec} onSpec={setWmSpec} scope={scope} onScope={setScope} scopeError={resolved.error}
@@ -603,6 +630,7 @@ export default function App() {
         </div>
       )}
 
+      {pwAsk && <PasswordModal file={pwAsk.file} error={pwAsk.error} onSubmit={(pw) => pwAsk.resolve(pw)} onCancel={() => pwAsk.resolve(null)} />}
       {showSig && <SignatureModal onClose={() => setShowSig(false)} onDone={(r) => { setShowSig(false); placeImage(r.asset, r.width / 4, r.height / 4) }} />}
       {toast && <div className={`toast ${toast.error ? 'error' : ''}`} role="status">{!toast.error && <Icon name="check" size={16} stroke={2.4} />}{toast.text}</div>}
     </div>

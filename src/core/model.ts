@@ -47,7 +47,12 @@ export interface PageRef {
      *  kept (vector, selectable text). Transparent pixels show the original. What it covers is hidden, not removed. */
     rect?: Box
   }
+  /** Words recognised on the erased picture (whole-page base only); cleared when the page is erased again. */
+  ocr?: OcrWord[]
 }
+
+/** A recognised word (OCR) in PDF user space, written as invisible text so an erased (picture) page stays searchable. */
+export interface OcrWord { text: string; x: number; y: number; w: number; h: number }
 
 export interface Asset { mime: 'image/png' | 'image/jpeg'; bytes: Uint8Array }
 

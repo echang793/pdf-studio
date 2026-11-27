@@ -36,6 +36,17 @@ never leave your machine.
 - **Remove hidden info on download** (on by default): leaves out app/producer names, creation and edit
   dates, per-page XMP and app data, and the names/dates on comments. Shows what the opened file says.
 
+**Passwords**
+- Opening a password-protected PDF asks for its password and opens an unlocked copy (files that only restrict
+  printing/copying open without asking). Downloads can get a password to open and/or print/edit/copy
+  restrictions (AES-256), set in Pages mode under Document info. Uses qpdf compiled to WebAssembly
+  (@neslinesli93/qpdf-wasm 0.3.1, ~1.3 MB, served with the site and loaded on first use).
+
+**Searchable erased pages (OCR)**
+- Pages erased as "the whole page as a picture" lose their text; Erase offers to read it back with OCR
+  (tesseract.js 7, English) and adds it as invisible text, so the download can be searched, selected and copied
+  again. First use downloads about 5 MB from cdn.jsdelivr.net, then it's cached; pages are read on this device.
+
 **Forms** (Edit mode, when the PDF has fields)
 - Fill text fields, checkboxes, dropdowns, lists and radio buttons. The download keeps working fields with
   your answers, or tick **Flatten** to bake the answers into the page.

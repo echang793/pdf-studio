@@ -5,6 +5,9 @@ import { resampleMask } from '../core/maskResample'
 import type { Box } from '../core/geometry'
 import type { Asset, PageRef } from '../core/model'
 import { findRepeatedMark } from '../core/findMark'
+import { wordsFromTesseract } from '../core/ocr'
+import type { OcrWord } from '../core/model'
+import { recognize } from '../render/ocr'
 import { diffPatch, patchRectPt } from '../core/patch'
 import type { Scope } from '../core/scope'
 import { fill, FILLING } from '../render/fill'
@@ -57,10 +60,12 @@ interface Props {
   /** Watermarks stored as their own PDF objects (found by a scan of the open files), or null if none. */
   builtIn: { pages: number } | null
   onRemoveBuiltIn: () => void
+  /** Store OCR words for erased (picture) pages. */
+  onOcr: (items: Record<string, OcrWord[]>) => void
 }
 
 /** Erase marks on PDF pages: the page becomes a picture with the marked area filled in. */
-export function PageEraser({ page, pages, assets, scope, onScope, scopeIds, scopeError, selectedCount, canUndo, onUndo, onCommit, onNotify, builtIn, onRemoveBuiltIn }: Props) {
+export function PageEraser({ page, pages, assets, scope, onScope, scopeIds, scopeError, selectedCount, canUndo, onUndo, onCommit, onNotify, builtIn, onRemoveBuiltIn, onOcr }: Props) {
   const [ready, setReady] = useState<string | null>(null) // page key the canvas currently shows
   const [batch, setBatch] = useState<string | null>(null)
   const [output, setOutput] = useState<Output>('patch')
@@ -133,6 +138,40 @@ export function PageEraser({ page, pages, assets, scope, onScope, scopeIds, scop
         onNotify(`Marked what ${sample.length > 1 ? `repeats across ${sample.length} pages` : 'looks like a coloured watermark'}. Check the red area, adjust it with the brush or Clear marks, then press ${e.mode === 'tint' ? 'Remove watermark' : 'Erase'}.`)
       } catch (err) {
         onNotify(err instanceof Error ? err.message : String(err), true)
+      } finally {
+        setBatch(null)
+        e.setBusy(false)
+      }
+    }, 20)
+  }
+
+  // Whole-page pictures (erased with "The whole page as a picture") have no text left until OCR puts it back.
+  const needOcr = pages.filter((p) => p.base && !p.base.rect && !p.ocr)
+
+  const runOcr = () => {
+    e.setBusy(true)
+    setTimeout(async () => {
+      try {
+        const items: Record<string, OcrWord[]> = {}
+        let words = 0
+        for (const [i, p] of needOcr.entries()) {
+          const asset = assets[p.base!.asset]
+          if (!asset) continue
+          const bmp = await createImageBitmap(new Blob([asset.bytes as BlobPart], { type: asset.mime }))
+          const c = document.createElement('canvas')
+          c.width = bmp.width
+          c.height = bmp.height
+          c.getContext('2d')!.drawImage(bmp, 0, 0)
+          bmp.close()
+          const blocks = await recognize(c, (label, f) => setBatch(`${label}${f > 0 && f < 1 ? ` ${Math.round(f * 100)}%` : ''} · page ${i + 1} of ${needOcr.length}`))
+          items[p.id] = wordsFromTesseract(blocks, c.width, c.height, p.media)
+          words += items[p.id].length
+        }
+        onOcr(items)
+        onNotify(`Made ${Object.keys(items).length} page${Object.keys(items).length === 1 ? '' : 's'} searchable (${words.toLocaleString()} words found)`)
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err)
+        onNotify(/dynamically imported module|Importing a module script failed/i.test(raw) ? 'OCR couldn’t load: this page is out of date, reload it' : `OCR failed: ${raw}`, true)
       } finally {
         setBatch(null)
         e.setBusy(false)
@@ -243,6 +282,16 @@ export function PageEraser({ page, pages, assets, scope, onScope, scopeIds, scop
               {' '}Pages you don’t erase stay untouched. Use it on files you own or may edit.
             </p>
           </div>
+          {needOcr.length > 0 && (
+            <div className="group divided">
+              <span className="eyebrow">Searchable text</span>
+              <p className="hint">
+                {needOcr.length} erased page{needOcr.length === 1 ? ' is a picture' : 's are pictures'} now, so {needOcr.length === 1 ? 'its' : 'their'} text can’t be searched or copied.
+                OCR reads the words back and adds them as invisible text. First use downloads about 5 MB (from cdn.jsdelivr.net), then it’s cached; your pages stay on this device.
+              </p>
+              <button className="btn" disabled={busy} onClick={runOcr}><Icon name="check" size={16} />Make {needOcr.length === 1 ? 'it' : 'them'} searchable (OCR)</button>
+            </div>
+          )}
           {page.base && !page.base.rect && (
             <div className="note"><Icon name="info" size={20} /><p>This page has been erased before, so it’s already a picture.</p></div>
           )}

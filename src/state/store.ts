@@ -1,6 +1,6 @@
 import { clampToMedia, marginsToBox, normRotation, type Box, type Margins, type Size } from '../core/geometry'
 import { headerFooterAnnots, type HeaderFooterSpec } from '../core/headerFooter'
-import { uid, type Annot, type AnnotPatch, type ImageAnnot, type PageRef, type WatermarkAnnot } from '../core/model'
+import { uid, type Annot, type AnnotPatch, type ImageAnnot, type OcrWord, type PageRef, type WatermarkAnnot } from '../core/model'
 
 type WatermarkSpec = Omit<WatermarkAnnot, 'id' | 'rect' | 'rotate'>
 
@@ -30,6 +30,8 @@ export type Action =
   | { type: 'setBases'; items: Record<string, string | { asset: string; rect: Box }> }
   /** Point every page of source `from` at `to` (a rewritten copy of the same pages, e.g. with watermark objects removed). */
   | { type: 'replaceSource'; from: string; to: string }
+  /** Store OCR words on erased pages (makes them searchable in the download). */
+  | { type: 'setOcr'; items: Record<string, OcrWord[]> }
   /** Header/footer on these pages (null removes it); numbers come from each page's place in the document. */
   | { type: 'setHeaderFooter'; ids: string[]; spec: HeaderFooterSpec | null; file: string; date: string }
   | { type: 'addAnnot'; pageId: string; annot: Annot }
@@ -106,8 +108,13 @@ function docReducer(doc: Doc, a: Action): Doc {
       if (ids.length === 0) return doc
       return mapPages(doc, ids, (p) => {
         const it = a.items[p.id]
-        return typeof it === 'string' ? { ...p, base: { asset: it }, annots: [] } : { ...p, base: { asset: it.asset, rect: it.rect } }
+        return typeof it === 'string' ? { ...p, base: { asset: it }, annots: [], ocr: undefined } : { ...p, base: { asset: it.asset, rect: it.rect }, ocr: undefined }
       })
+    }
+    case 'setOcr': {
+      const ids = Object.keys(a.items).filter((id) => doc.pages.some((p) => p.id === id))
+      if (ids.length === 0) return doc
+      return mapPages(doc, ids, (p) => ({ ...p, ocr: a.items[p.id] }))
     }
     case 'replaceSource': {
       const ids = doc.pages.filter((p) => p.src === a.from).map((p) => p.id)

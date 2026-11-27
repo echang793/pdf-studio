@@ -32,6 +32,13 @@ npm run build      # tsc -b && vite build -> dist/
 - A tab opened before a deploy fails to load hashed chunks ("Failed to fetch dynamically imported module"): reload.
 - Tests run in Node: no canvas/ImageData there; keep pixel logic in `src/core/` on raw arrays.
 - Never spread a huge typed array into `Math.max(...)` (stack overflow) — use reduce.
+- `vite.config.ts` plugin `drop-unused-ort-wasm` deletes onnxruntime's `.wasm` from the build (lama.ts fetches pinned
+  copies). It must match only `ort-wasm*`: it once deleted every `.wasm`, which would have shipped passwords without
+  qpdf (`tests/viteConfig.test.ts`). Check `find dist -name '*.wasm'` after adding any wasm dependency.
+- qpdf-wasm ignores `print`/`printErr` and binds `console.error` when created; `render/qpdf.ts` swaps in silent
+  console functions for that one call. qpdf's `--is-encrypted` can't open user-password files: use `isEncrypted` (pdf-lib).
+- Third-party downloads: AI fill (huggingface + jsDelivr, SHA-pinned), OCR (tesseract.js worker/core/eng data from
+  jsDelivr, pinned versions). qpdf wasm is served with the site.
 
 ## Do NOT touch
 - Pinned URLs/SHA-256 values in `src/render/lama.ts` unless deliberately upgrading the model/engine.

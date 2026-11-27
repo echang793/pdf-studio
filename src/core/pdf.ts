@@ -1,8 +1,8 @@
-import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
+import { PDFDocument, StandardFonts, TextRenderingMode, beginText, degrees, endText, popGraphicsState, pushGraphicsState, rgb, setCharacterSqueeze, setFontAndSize, setTextMatrix, setTextRenderingMode, showText, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import { normRotation, type Box, type Point } from './geometry'
 import { keepForms } from './forms'
 import { applyOutputOptions, type OutputOptions } from './metadata'
-import { uid, type Annot, type Asset, type FontName, type PageRef } from './model'
+import { uid, type Annot, type Asset, type FontName, type OcrWord, type PageRef } from './model'
 
 export class SourceError extends Error {}
 
@@ -57,6 +57,29 @@ export function annotFrame(a: Annot): { w: number; h: number; map: (lx: number, 
     case 180: return { w: width, h: height, map: (lx, ly) => ({ x: x + width - lx, y: y + height - ly }) }
     case 270: return { w: height, h: width, map: (lx, ly) => ({ x: x + ly, y: y + height - lx }) }
   }
+}
+
+/**
+ * Invisible text (rendering mode 3) over a picture page, each word stretched to its box: selectable, searchable and
+ * copyable like a scanner's OCR layer, but never drawn.
+ */
+function drawOcrText(page: PDFPage, fnt: PDFFont, words: OcrWord[]) {
+  const key = page.node.newFontDictionary(fnt.name, fnt.ref)
+  const ops = [pushGraphicsState(), beginText(), setTextRenderingMode(TextRenderingMode.Invisible)]
+  for (const w of words) {
+    const safe = [...w.text].map((ch) => { try { fnt.encodeText(ch); return ch } catch { return '?' } }).join('')
+    const size = Math.max(1, w.h * 0.9)
+    const natural = fnt.widthOfTextAtSize(safe, size)
+    if (!natural) continue
+    ops.push(
+      setFontAndSize(key, size),
+      setCharacterSqueeze(Math.max(1, Math.min(1000, (w.w / natural) * 100))),
+      setTextMatrix(1, 0, 0, 1, w.x, w.y + w.h * 0.2), // baseline a little above the box bottom (descenders)
+      showText(fnt.encodeText(safe)),
+    )
+  }
+  ops.push(endText(), popGraphicsState())
+  page.pushOperators(...ops)
 }
 
 interface Ctx {
@@ -181,6 +204,7 @@ export async function buildPdf(
       page = out.addPage([m.width, m.height])
       page.setMediaBox(m.x, m.y, m.width, m.height)
       page.drawImage(await image(ctx, ref.base.asset), { x: m.x, y: m.y, width: m.width, height: m.height })
+      if (ref.ocr?.length) drawOcrText(page, await font(ctx, 'Helvetica'), ref.ocr)
     } else if (ref.src) {
       const template = copied.get(ref.src)!.get(ref.srcIndex)!
       if (used.has(template)) {
