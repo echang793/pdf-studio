@@ -42,7 +42,7 @@ function Content({ a, page, scale, box, url }: { a: Annot; page: PageRef; scale:
   }
   if (a.kind === 'image') return <img alt="" draggable={false} src={url} style={{ ...inner, objectFit: 'fill' }} />
   return (
-    <div className="annot-copy" style={{ ...inner, fontSize: a.size * scale, lineHeight: 1.2, color: css(a.color), fontFamily: FAMILY[a.font] }}>
+    <div className="annot-copy" style={{ ...inner, fontSize: a.size * scale, lineHeight: 1.2, textAlign: a.align ?? 'left', color: css(a.color), fontFamily: FAMILY[a.font] }}>
       {a.text || <span className="placeholder">Double-click to type</span>}
     </div>
   )

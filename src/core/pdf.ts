@@ -1,5 +1,7 @@
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import { normRotation, type Box, type Point } from './geometry'
+import { keepForms } from './forms'
+import { applyOutputOptions, type OutputOptions } from './metadata'
 import { uid, type Annot, type Asset, type FontName, type PageRef } from './model'
 
 export class SourceError extends Error {}
@@ -99,9 +101,11 @@ async function drawAnnot(ctx: Ctx, page: PDFPage, a: Annot) {
     const fnt = await font(ctx, a.font)
     const lineH = a.size * 1.2
     a.text.split('\n').forEach((line, i) => {
-      const o = f.map(0, f.h - a.size - i * lineH)
       // WinAnsi fonts can't encode everything; replace unsupported chars instead of throwing.
       const safe = [...line].map((ch) => { try { fnt.encodeText(ch); return ch } catch { return '?' } }).join('')
+      const lw = a.align && a.align !== 'left' ? fnt.widthOfTextAtSize(safe, a.size) : 0
+      const dx = a.align === 'center' ? (f.w - lw) / 2 : a.align === 'right' ? f.w - lw : 0
+      const o = f.map(dx, f.h - a.size - i * lineH)
       page.drawText(safe, { x: o.x, y: o.y, size: a.size, font: fnt, color: rgb(...a.color), rotate })
     })
   } else {
@@ -137,8 +141,10 @@ export async function buildPdf(
   sources: Record<string, Uint8Array>,
   assets: Record<string, Asset>,
   rasterized?: Record<string, Rasterized>,
+  options: OutputOptions = {},
 ): Promise<Uint8Array> {
-  const out = await PDFDocument.create()
+  // Without strip, pdf-lib stamps its own producer/creator and dates; with it, nothing is added.
+  const out = await PDFDocument.create({ updateMetadata: !options.strip })
   const ctx: Ctx = { fonts: new Map(), images: new Map(), out, assets }
   const rasterImages = new Map<string, PDFImage>()
 
@@ -198,5 +204,7 @@ export async function buildPdf(
     page.setCropBox(c.x, c.y, c.width, c.height)
     for (const a of ref.annots) await drawAnnot(ctx, page, a)
   }
+  keepForms(out, [...docs.values()])
+  applyOutputOptions(out, options)
   return out.save()
 }

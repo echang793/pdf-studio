@@ -23,6 +23,12 @@ import { ThumbRail } from './ui/ThumbRail'
 import type { Tool } from './ui/tools'
 import { useFitScale } from './ui/useFitScale'
 import { WatermarkPanel, type WatermarkSpec } from './ui/WatermarkPanel'
+import { HeaderFooterPanel } from './ui/HeaderFooterPanel'
+import { DocInfoPanel } from './ui/DocInfoPanel'
+import { FormPanel, type FormGroup } from './ui/FormPanel'
+import { fillForm, listFields } from './core/forms'
+import { readMetadata, type DocMeta, type MetaRead } from './core/metadata'
+import type { HeaderFooterSpec } from './core/headerFooter'
 
 type Mode = 'crop' | 'pages' | 'watermark' | 'edit' | 'erase'
 const SIZES = { letter: { width: 612, height: 792 }, a4: { width: 595.28, height: 841.89 } }
@@ -44,6 +50,10 @@ export default function App() {
   const [zoom, setZoom] = useState(1)
   const [unit, setUnit] = useState<Unit>('mm')
   const [wmSpec, setWmSpec] = useState<WatermarkSpec>({ text: 'DRAFT', size: 72, color: [0.6, 0.6, 0.6], opacity: 0.3, angle: 45, font: 'Helvetica' })
+  const [hfSpec, setHfSpec] = useState<HeaderFooterSpec>({ header: '', headerAlign: 'left', footer: 'Page {page} of {pages}', footerAlign: 'center', font: 'Helvetica', size: 10, color: [0.25, 0.25, 0.25], margin: 28, start: 1 })
+  const [meta, setMeta] = useState<DocMeta>({ title: '', author: '', subject: '', keywords: '' })
+  const [metaRead, setMetaRead] = useState<MetaRead | null>(null)
+  const [strip, setStrip] = useState(true)
   const [dragOver, setDragOver] = useState(false)
   const [name, setName] = useState('document')
   const sources = useRef<Record<string, Uint8Array>>({})
@@ -134,6 +144,10 @@ export default function App() {
         anchor.current = null
         dispatch({ type: 'reset' })
         setName(pdfs[0].name.replace(/\.pdf$/i, ''))
+        const first = loaded[0]?.src ? sources.current[loaded[0].src] : null
+        const m = first ? await readMetadata(first).catch(() => null) : null
+        setMetaRead(m)
+        setMeta({ title: m?.title ?? '', author: m?.author ?? '', subject: m?.subject ?? '', keywords: m?.keywords ?? '' })
       }
       dispatch({ type: 'addPages', pages: loaded })
       notify(`${replace ? 'Opened' : 'Added'} ${loaded.length} page${loaded.length === 1 ? '' : 's'}`)
@@ -144,7 +158,7 @@ export default function App() {
     }
   }, [notify])
 
-  const build = useCallback(async (list: PageRef[], rasterized?: Record<string, Rasterized>) => buildPdf(list, sources.current, assets, rasterized), [assets])
+  const build = useCallback(async (list: PageRef[], rasterized?: Record<string, Rasterized>) => buildPdf(list, sources.current, assets, rasterized, { meta, strip }), [assets, meta, strip])
 
   const run = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true)
@@ -185,6 +199,14 @@ export default function App() {
     if (resolved.error) return
     dispatch({ type: 'setWatermark', ids: resolved.ids, spec: null })
     notify(`Removed watermark from ${resolved.ids.length} page${resolved.ids.length === 1 ? '' : 's'}`)
+  }
+
+  const applyHeaderFooter = (spec: HeaderFooterSpec | null) => {
+    if (resolved.error) return
+    const date = new Date().toLocaleDateString()
+    dispatch({ type: 'setHeaderFooter', ids: resolved.ids, spec, file: name, date })
+    const n = resolved.ids.length
+    notify(spec ? `Added header/footer to ${n} page${n === 1 ? '' : 's'}` : `Removed header/footer from ${n} page${n === 1 ? '' : 's'}`)
   }
 
   // ---- pages
@@ -273,6 +295,36 @@ export default function App() {
     })()
     return () => { stale = true }
   }, [mode, srcKey])
+
+  // ---- form fields: listed whenever Edit is shown
+  const [forms, setForms] = useState<{ key: string; groups: FormGroup[] } | null>(null)
+  useEffect(() => {
+    if (mode !== 'edit' || !srcKey) return
+    let stale = false
+    ;(async () => {
+      const groups: FormGroup[] = []
+      for (const id of srcKey.split('|')) {
+        const bytes = sources.current[id]
+        const fields = bytes ? await listFields(bytes).catch(() => []) : []
+        if (fields.length) groups.push({ src: id, fields })
+      }
+      if (!stale) setForms({ key: srcKey, groups })
+    })()
+    return () => { stale = true }
+  }, [mode, srcKey])
+
+  const applyForm = (values: Record<string, Record<string, string | boolean>>, flatten: boolean) => run(async () => {
+    for (const [id, v] of Object.entries(values)) {
+      const bytes = sources.current[id]
+      if (!bytes) continue
+      const next = uid('src')
+      const filled = await fillForm(bytes, v, { flatten })
+      sources.current[next] = filled
+      openForRender(next, filled)
+      dispatch({ type: 'replaceSource', from: id, to: next })
+    }
+    notify(flatten ? 'Filled and flattened the form' : 'Filled the form')
+  })
 
   const removeBuiltIn = () => run(async () => {
     let n = 0
@@ -519,11 +571,21 @@ export default function App() {
                   redactCount={redactCount} onExportRedacted={exportRedacted}
                 />
               )}
+              {mode === 'pages' && <DocInfoPanel meta={meta} onMeta={setMeta} strip={strip} onStrip={setStrip} original={metaRead} />}
               {mode === 'watermark' && (
                 <WatermarkPanel
                   spec={wmSpec} onSpec={setWmSpec} scope={scope} onScope={setScope} scopeError={resolved.error}
                   scopeCount={resolved.ids.length} selectedCount={picked.size} busy={busy} onApply={applyWatermark} onRemove={removeWatermark}
                 />
+              )}
+              {mode === 'watermark' && (
+                <HeaderFooterPanel
+                  spec={hfSpec} onSpec={setHfSpec} scopeCount={resolved.ids.length} blocked={!!resolved.error || busy}
+                  onApply={() => applyHeaderFooter(hfSpec)} onRemove={() => applyHeaderFooter(null)}
+                />
+              )}
+              {mode === 'edit' && forms && forms.key === srcKey && forms.groups.length > 0 && (
+                <FormPanel key={forms.key} groups={forms.groups} busy={busy} onApply={applyForm} />
               )}
               {mode === 'edit' && (
                 <EditPanel

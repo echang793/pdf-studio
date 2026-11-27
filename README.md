@@ -27,6 +27,18 @@ never leave your machine.
 **Watermark**
 - Stamp text across a page range — font, size, color, opacity, angle. Re-applying replaces the old
   one instead of stacking, so it's easy to tweak.
+- **Page numbers, header & footer**: text with `{page}`, `{pages}`, `{date}`, `{file}`, aligned left / centre /
+  right, any font, size, colour and margin, numbered from any start. Re-applying replaces (and renumbers);
+  each line becomes a normal text box you can still nudge in Edit.
+
+**Document info** (Pages mode)
+- Set the title, author, subject and keywords of the downloaded PDF.
+- **Remove hidden info on download** (on by default): leaves out app/producer names, creation and edit
+  dates, per-page XMP and app data, and the names/dates on comments. Shows what the opened file says.
+
+**Forms** (Edit mode, when the PDF has fields)
+- Fill text fields, checkboxes, dropdowns, lists and radio buttons. The download keeps working fields with
+  your answers, or tick **Flatten** to bake the answers into the page.
 
 **Edit**
 - Text boxes (sans, serif or mono; size; color), white-out, highlight, outline boxes.

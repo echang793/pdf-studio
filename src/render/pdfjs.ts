@@ -214,7 +214,9 @@ function paintAnnot(ctx: CanvasRenderingContext2D, ref: PageRef, a: Annot, dpr: 
     ctx.font = `${a.size * dpr}px ${CANVAS_FONT[a.font]}`
     ctx.textBaseline = 'top'
     const lineH = a.size * 1.2 * dpr
-    a.text.split('\n').forEach((line, i) => ctx.fillText(line, -w / 2, -h / 2 + i * lineH))
+    ctx.textAlign = a.align ?? 'left'
+    const x = a.align === 'center' ? 0 : a.align === 'right' ? w / 2 : -w / 2
+    a.text.split('\n').forEach((line, i) => ctx.fillText(line, x, -h / 2 + i * lineH))
   } else {
     ctx.globalAlpha = a.opacity
     ctx.fillStyle = rgbCss(a.color)

@@ -1,4 +1,5 @@
 import { clampToMedia, marginsToBox, normRotation, type Box, type Margins, type Size } from '../core/geometry'
+import { headerFooterAnnots, type HeaderFooterSpec } from '../core/headerFooter'
 import { uid, type Annot, type AnnotPatch, type ImageAnnot, type PageRef, type WatermarkAnnot } from '../core/model'
 
 type WatermarkSpec = Omit<WatermarkAnnot, 'id' | 'rect' | 'rotate'>
@@ -29,6 +30,8 @@ export type Action =
   | { type: 'setBases'; items: Record<string, string | { asset: string; rect: Box }> }
   /** Point every page of source `from` at `to` (a rewritten copy of the same pages, e.g. with watermark objects removed). */
   | { type: 'replaceSource'; from: string; to: string }
+  /** Header/footer on these pages (null removes it); numbers come from each page's place in the document. */
+  | { type: 'setHeaderFooter'; ids: string[]; spec: HeaderFooterSpec | null; file: string; date: string }
   | { type: 'addAnnot'; pageId: string; annot: Annot }
   | { type: 'updateAnnot'; pageId: string; id: string; patch: AnnotPatch }
   | { type: 'removeAnnot'; pageId: string; id: string }
@@ -110,6 +113,17 @@ function docReducer(doc: Doc, a: Action): Doc {
       const ids = doc.pages.filter((p) => p.src === a.from).map((p) => p.id)
       if (ids.length === 0) return doc
       return mapPages(doc, ids, (p) => ({ ...p, src: a.to }))
+    }
+    case 'setHeaderFooter': {
+      const total = doc.pages.length
+      const spec = a.spec
+      return mapPages(doc, a.ids, (p) => {
+        const rest = p.annots.filter((x) => !(x.kind === 'text' && x.tag))
+        if (!spec) return { ...p, annots: rest }
+        const i = doc.pages.indexOf(p)
+        const ctx = { page: i + spec.start, pages: total + spec.start - 1, file: a.file, date: a.date }
+        return { ...p, annots: [...rest, ...headerFooterAnnots(p, spec, ctx)] }
+      })
     }
     case 'addAnnot':
       return mapPages(doc, [a.pageId], (p) => ({ ...p, annots: [...p.annots, a.annot] }))

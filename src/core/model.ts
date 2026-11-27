@@ -10,7 +10,13 @@ interface AnnotBase {
   /** Page rotation when placed; content is drawn upright for that rotation. */
   rotate: Rotation
 }
-export interface TextAnnot extends AnnotBase { kind: 'text'; text: string; size: number; color: RGB; font: FontName }
+export interface TextAnnot extends AnnotBase {
+  kind: 'text'; text: string; size: number; color: RGB; font: FontName
+  /** Horizontal alignment inside the box (default left). */
+  align?: 'left' | 'center' | 'right'
+  /** Set on generated header/footer boxes, so re-applying replaces them. */
+  tag?: 'header' | 'footer'
+}
 export interface RectAnnot extends AnnotBase { kind: 'rect'; fill: RGB | null; stroke: RGB | null; opacity: number }
 /** Same shape as RectAnnot (drags/resizes the same way) but flagged for real removal: exporting a
  *  "redacted copy" rasterizes any page carrying one of these, so the covered content can't be
