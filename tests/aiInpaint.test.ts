@@ -151,7 +151,9 @@ describe('planTiles', () => {
       for (let y = t.y; y < t.y + t.h; y++) for (let x = t.x; x < t.x + t.w; x++) seen[y * w + x]++
     }
     expect(seen.reduce((a, b) => Math.max(a, b), 0)).toBe(1) // no overlap
-    for (let i = 0; i < m.length; i++) if (m[i]) expect(seen[i]).toBe(1) // all covered
+    let uncovered = 0
+    for (let i = 0; i < m.length; i++) if (m[i] && seen[i] !== 1) uncovered++
+    expect(uncovered).toBe(0) // all covered (one assertion: a per-pixel expect over 6M pixels timed out on CI)
     expect(count(seen)).toBeGreaterThanOrEqual(count(m))
   })
   it('skips grid cells the mark never touches (a diagonal stroke needs far fewer tiles than its bounding box)', () => {

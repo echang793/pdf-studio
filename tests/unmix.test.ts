@@ -59,15 +59,16 @@ describe('removeTint', () => {
     const e = estimateTint(marked, inStripe, W, H)!
     const out = Uint8ClampedArray.from(marked)
     removeTint(out, inStripe, W, H, { ...e, coverage: 'color' })
-    let worst = 0
+    let worst = 0, touchedOutside = 0
     for (let i = 0; i < W * H; i++) {
       for (let k = 0; k < 3; k++) {
         const err = Math.abs(out[i * 4 + k] - clean[i * 4 + k])
         if (inStripe[i]) worst = Math.max(worst, err)
-        else expect(out[i * 4 + k]).toBe(marked[i * 4 + k])
+        else if (out[i * 4 + k] !== marked[i * 4 + k]) touchedOutside++
       }
-      expect(out[i * 4 + 3]).toBe(255)
+      if (out[i * 4 + 3] !== 255) touchedOutside++
     }
+    expect(touchedOutside).toBe(0)
     expect(worst).toBeLessThanOrEqual(12) // quantisation + the strength estimate; pre-removal error was ~100
   })
   it('does not touch pixels the watermark never reached, even inside the painted area', () => {
@@ -75,7 +76,9 @@ describe('removeTint', () => {
     const e = estimateTint(marked, inStripe, W, H)!
     const out = Uint8ClampedArray.from(marked)
     removeTint(out, inStripe, W, H, { ...e, coverage: 'color' })
-    for (let i = 0; i < W * H; i++) if (cover[i] === 0) for (let k = 0; k < 3; k++) expect(Math.abs(out[i * 4 + k] - clean[i * 4 + k])).toBeLessThanOrEqual(1)
+    let off = 0
+    for (let i = 0; i < W * H; i++) if (cover[i] === 0) for (let k = 0; k < 3; k++) off = Math.max(off, Math.abs(out[i * 4 + k] - clean[i * 4 + k]))
+    expect(off).toBeLessThanOrEqual(1)
   })
   it('"paint" coverage trusts the painted area fully (works for grey watermarks the colour test cannot see)', () => {
     const { clean, marked, cover } = scene()
@@ -84,7 +87,9 @@ describe('removeTint', () => {
     const e = estimateTint(marked, tight.map((_, i) => (cover[i] > 0 ? 1 : 0)) as Uint8Array, W, H)!
     const out = Uint8ClampedArray.from(marked)
     removeTint(out, tight, W, H, { ...e, coverage: 'paint' })
-    for (let i = 0; i < W * H; i++) if (tight[i]) for (let k = 0; k < 3; k++) expect(Math.abs(out[i * 4 + k] - clean[i * 4 + k])).toBeLessThanOrEqual(12)
+    let worst = 0
+    for (let i = 0; i < W * H; i++) if (tight[i]) for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(out[i * 4 + k] - clean[i * 4 + k]))
+    expect(worst).toBeLessThanOrEqual(12)
   })
   it('a manual strength overrides the estimate', () => {
     const { marked, inStripe } = scene()
